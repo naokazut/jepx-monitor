@@ -1,39 +1,43 @@
 import requests
 import pandas as pd
 import os
-from datetime import datetime
+import io
 
 def fetch_jepx_data():
-    url = "https://www.jepx.org/market/excel/spot_area_2025.csv" # 2025年度のエリア間値差を含むデータを指定
+    # 全エリアの価格が含まれるJEPXのCSV（2025年度版）
+    url = "https://www.jepx.org/market/excel/spot_area_2025.csv"
+    
     try:
-        # JEPXからデータを取得
-        df = pd.read_csv(url, encoding='shift_jis')
+        response = requests.get(url)
+        response.encoding = 'shift_jis'
         
-        # 列名の整理（JEPXのCSVは日本語なので、プログラムで使いやすいように変換）
-        # 必要な列：年月日, 時刻コード, スポット（東京）など
-        # ここでは「エリア別」に対応するため、データを整形します
+        # CSVを読み込み
+        df = pd.read_csv(io.StringIO(response.text))
         
-        target_columns = {
-            '年月日': 'date',
-            '時刻コード': 'time_code',
-            'エリア': 'area', # CSV内にエリア列がある前提
-            'システム値(円/kWh)': 'price'
-        }
+        # 必要な列を日本語名から英語名にマッピング
+        # JEPXのCSV構造：年月日, 時刻コード, システム値, 北海道, 東北, 東京, ...
+        # これを「縦持ち（Long format）」に変換して、エリア選択をしやすくします
         
-        # もし特定のエリア（例：東京）を抽出する場合
-        # 実際にはJEPXのCSV構造に合わせる必要があります
-        # 簡易的に、システム値を「東京」として保存する例：
-        df_selected = df[['年月日', '時刻コード', 'システム値(円/kWh)']].copy()
-        df_selected.columns = ['date', 'time_code', 'price']
-        df_selected['area'] = '東京' # 強制的に「東京」ラベルを付与
+        id_vars = ['年月日', '時刻コード']
+        area_columns = ['東京', '関西', '九州', '東北', '中部', '北陸', '中国', '四国', '北海道']
         
-        # 保存先ディレクトリの作成
+        # 必要な列だけを抽出して整形
+        df_melted = pd.melt(df, id_vars=id_vars, value_vars=area_columns, 
+                            var_name='area', value_name='price')
+        
+        # 列名の最終調整
+        df_melted = df_melted.rename(columns={'年月日': 'date', '時刻コード': 'time_code'})
+        
+        # 日付形式を統一
+        df_melted['date'] = pd.to_datetime(df_melted['date'])
+        
+        # 保存先ディレクトリ
         os.makedirs('data', exist_ok=True)
         csv_path = 'data/spot_2025.csv'
         
-        # 保存（既存データに上書きして構造をリセット）
-        df_selected.to_csv(csv_path, index=False)
-        print(f"Successfully updated {csv_path}")
+        # 上書き保存（これで構造が「area」列を持つ正しいものにリセットされます）
+        df_melted.to_csv(csv_path, index=False)
+        print(f"Successfully updated with {len(df_melted)} rows.")
 
     except Exception as e:
         print(f"Error: {e}")
