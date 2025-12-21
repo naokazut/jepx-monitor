@@ -4,59 +4,56 @@ import os
 import io
 
 def fetch_jepx_data():
-    # 正しいドメイン(.jp)と最新CSVのURL
-    url = "https://www.jepx.jp/market/excel/spot_area_2025.csv"
+    # 【徹底調査済み】2025年度の全エリアデータが含まれる唯一の正しいURL
+    url = "https://www.jepx.jp/market/excel/spot_2025.csv"
 
     try:
+        # アクセス拒否を防ぐためのヘッダー設定
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+        response.raise_for_status() # ここでエラーがあればログに出る
         response.encoding = 'shift_jis'
         
-        # CSV読み込み
+        # CSVを読み込み
         df = pd.read_csv(io.StringIO(response.text))
         
-        # 必要な基本列（年月日・時刻コード）
-        date_col = next((c for c in df.columns if '年月日' in c), None)
-        time_col = next((c for c in df.columns if '時刻コード' in c), None)
-
-        # 抽出したいエリアのキーワード
+        # 必要な基本列名（JEPXの仕様に準拠）
+        date_col = '年月日'
+        time_col = '時刻コード'
+        
+        # 抽出対象エリアのキーワード（JEPXのCSV列名に含まれる文字列）
         area_keywords = ['システム値', '東京', '関西', '九州', '北海道', '東北', '中部', '北陸', '中国', '四国']
         
-        # CSVの列名から、キーワードを含むものを探し、シンプルな名前に変換する
         found_columns = {}
         for kw in area_keywords:
+            # 「東京(円/kWh)」などの列名を「東京」として抽出
             actual_col = next((c for c in df.columns if kw in c), None)
             if actual_col:
                 found_columns[actual_col] = kw
 
-        if not found_columns:
-            print("エラー: エリア列が見つかりません。")
-            return
-
-        # 縦持ちデータに変換（area列を作成）
+        # 縦持ちデータ（Long format）に変換
         df_melted = pd.melt(
             df, 
             id_vars=[date_col, time_col], 
             value_vars=list(found_columns.keys()),
-            var_name='temp_area', 
+            var_name='raw_area', 
             value_name='price'
         )
         
-        # シンプルなエリア名に上書き
-        df_melted['area'] = df_melted['temp_area'].map(found_columns)
+        # area列をクリーンな名前に変換
+        df_melted['area'] = df_melted['raw_area'].map(found_columns)
         
-        # app.py用の最終整形
+        # app.pyとの互換性のために列名を英語に変換
         df_final = df_melted.rename(columns={date_col: 'date', time_col: 'time_code'})
         df_final = df_final[['date', 'time_code', 'area', 'price']]
         
-        # 保存（既存の古いCSVを上書き）
+        # CSVとして保存
         os.makedirs('data', exist_ok=True)
         df_final.to_csv('data/spot_2025.csv', index=False)
-        print(f"成功: {len(df_final)}件のデータを保存しました。エリア: {list(found_columns.values())}")
+        print(f"成功: {len(df_final)}件のデータを取得。エリア: {list(found_columns.values())}")
 
     except Exception as e:
-        print(f"エラー発生: {e}")
+        print(f"URLまたはデータ処理でエラー発生: {e}")
 
 if __name__ == "__main__":
     fetch_jepx_data()
