@@ -4,43 +4,42 @@ import os
 import io
 
 def fetch_jepx_data():
-    # 全エリアの価格が含まれるJEPXのCSV（2025年度版）
+    # 2025年度の全エリア価格CSV
     url = "https://www.jepx.org/market/excel/spot_area_2025.csv"
     
     try:
         response = requests.get(url)
         response.encoding = 'shift_jis'
         
-        # CSVを読み込み
+        # CSVを読み込み（JEPXのヘッダー構造を正確に反映）
         df = pd.read_csv(io.StringIO(response.text))
         
-        # 必要な列を日本語名から英語名にマッピング
-        # JEPXのCSV構造：年月日, 時刻コード, システム値, 北海道, 東北, 東京, ...
-        # これを「縦持ち（Long format）」に変換して、エリア選択をしやすくします
-        
+        # JEPX CSVの列名（実際の日本語名）を定義
+        # 年月日, 時刻コード, システム値, 北海道, 東北, 東京, 中部, 北陸, 関西, 中国, 四国, 九州
         id_vars = ['年月日', '時刻コード']
-        area_columns = ['東京', '関西', '九州', '東北', '中部', '北陸', '中国', '四国', '北海道']
+        # 取得したいエリア列のリスト
+        area_cols = ['システム値', '東京', '関西', '九州', '東北', '中部', '北陸', '中国', '四国', '北海道']
         
-        # 必要な列だけを抽出して整形
-        df_melted = pd.melt(df, id_vars=id_vars, value_vars=area_columns, 
+        # 必要な列だけが存在するかチェックし、データを整形
+        existing_areas = [c for c in area_cols if c in df.columns]
+        
+        # データを「縦持ち」に変換（エリア選択を可能にするための重要工程）
+        df_melted = pd.melt(df, id_vars=id_vars, value_vars=existing_areas, 
                             var_name='area', value_name='price')
         
-        # 列名の最終調整
+        # 列名を英語に変換（app.pyとの整合性）
         df_melted = df_melted.rename(columns={'年月日': 'date', '時刻コード': 'time_code'})
         
-        # 日付形式を統一
-        df_melted['date'] = pd.to_datetime(df_melted['date'])
+        # 日付型に変換
+        df_melted['date'] = pd.to_datetime(df_melted['date']).dt.strftime('%Y-%m-%d')
         
-        # 保存先ディレクトリ
+        # 保存
         os.makedirs('data', exist_ok=True)
-        csv_path = 'data/spot_2025.csv'
-        
-        # 上書き保存（これで構造が「area」列を持つ正しいものにリセットされます）
-        df_melted.to_csv(csv_path, index=False)
-        print(f"Successfully updated with {len(df_melted)} rows.")
+        df_melted.to_csv('data/spot_2025.csv', index=False)
+        print(f"成功: {len(df_melted)}件のデータを保存しました。")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"エラー発生: {e}")
 
 if __name__ == "__main__":
     fetch_jepx_data()
