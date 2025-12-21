@@ -4,39 +4,45 @@ import os
 import io
 
 def fetch_jepx_data():
-    # 2025年度の全エリア価格CSV
-    url = "https://www.jepx.org/market/excel/spot_area_2025.csv"
-    
+    # 正しいドメイン（.jp）とエリア別価格CSVのURL
+    url = "https://www.jepx.jp/market/excel/spot_area_2025.csv"
+
     try:
-        response = requests.get(url)
+        # 確実にアクセスするための設定
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
         response.encoding = 'shift_jis'
         
-        # CSVを読み込み（JEPXのヘッダー構造を正確に反映）
+        # CSVを読み込み
         df = pd.read_csv(io.StringIO(response.text))
         
-        # JEPX CSVの列名（実際の日本語名）を定義
-        # 年月日, 時刻コード, システム値, 北海道, 東北, 東京, 中部, 北陸, 関西, 中国, 四国, 九州
-        id_vars = ['年月日', '時刻コード']
-        # 取得したいエリア列のリスト
-        area_cols = ['システム値', '東京', '関西', '九州', '東北', '中部', '北陸', '中国', '四国', '北海道']
+        # JEPXの列名を特定
+        date_col = '年月日'
+        time_col = '時刻コード'
         
-        # 必要な列だけが存在するかチェックし、データを整形
-        existing_areas = [c for c in area_cols if c in df.columns]
+        # 取得対象のエリア（JEPXの実際の列名）
+        target_areas = ['システム値', '東京', '関西', '九州', '北海道', '東北', '中部', '北陸', '中国', '四国']
         
-        # データを「縦持ち」に変換（エリア選択を可能にするための重要工程）
-        df_melted = pd.melt(df, id_vars=id_vars, value_vars=existing_areas, 
-                            var_name='area', value_name='price')
+        # 実際にCSV内に存在する列だけを抽出
+        existing_areas = [c for c in target_areas if c in df.columns]
+
+        # 「エリア」という独立した列を作る（縦持ち変換）
+        df_melted = pd.melt(
+            df, 
+            id_vars=[date_col, time_col], 
+            value_vars=existing_areas,
+            var_name='area', 
+            value_name='price'
+        )
+
+        # アプリ側の変数名（英語）に変換
+        df_final = df_melted.rename(columns={date_col: 'date', time_col: 'time_code'})
         
-        # 列名を英語に変換（app.pyとの整合性）
-        df_melted = df_melted.rename(columns={'年月日': 'date', '時刻コード': 'time_code'})
-        
-        # 日付型に変換
-        df_melted['date'] = pd.to_datetime(df_melted['date']).dt.strftime('%Y-%m-%d')
-        
-        # 保存
+        # 保存（この1つのCSVに全エリアのデータが蓄積されます）
         os.makedirs('data', exist_ok=True)
-        df_melted.to_csv('data/spot_2025.csv', index=False)
-        print(f"成功: {len(df_melted)}件のデータを保存しました。")
+        df_final.to_csv('data/spot_2025.csv', index=False)
+        print(f"成功: {len(df_final)}件のデータを保存しました。エリア: {existing_areas}")
 
     except Exception as e:
         print(f"エラー発生: {e}")
