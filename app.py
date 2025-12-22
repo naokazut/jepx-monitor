@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import timedelta
 
 # 1. ページ設定
@@ -12,7 +13,6 @@ def load_data():
     df = pd.read_csv("data/spot_2025.csv")
     df['date'] = pd.to_datetime(df['date'])
     
-    # 時刻変換（1-48 -> 00:00-23:30）
     def code_to_time(code):
         total_minutes = (int(code) - 1) * 30
         return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
@@ -41,19 +41,15 @@ st.markdown("""
 try:
     df = load_data()
     
-    # --- 3. サイドバーUI（UI強化） ---
+    # --- 3. サイドバーUI ---
     st.sidebar.header("表示設定")
-    
-    # エリア選択
     all_areas = sorted(df['エリア'].unique().tolist())
     selected_area = st.sidebar.selectbox("表示エリアを選択", ["全エリア"] + all_areas, index=0)
     
-    # 日付選択（基準日）
     available_dates = df['date'].dt.date.unique()
     max_date = available_dates.max()
     selected_date = st.sidebar.date_input("基準日を選択", value=max_date)
 
-    # 【新規機能】任意の期間を選択
     st.sidebar.markdown("---")
     st.sidebar.subheader("📅 任意の期間を指定")
     date_range = st.sidebar.date_input(
@@ -87,7 +83,7 @@ try:
         fig_today.update_layout(hovermode="x unified", xaxis=dict(tickmode='linear', dtick=4))
         st.plotly_chart(fig_today, use_container_width=True)
 
-        # --- ② 任意指定期間の表示（新規セクション） ---
+        # --- ② 任意指定期間の分析（平均線追加） ---
         if len(date_range) == 2:
             start_date, end_date = date_range
             st.markdown(f'<div class="section-header">🔍 指定期間の分析: {start_date} ～ {end_date}</div>', unsafe_allow_html=True)
@@ -99,18 +95,32 @@ try:
             custom_df = df[mask_custom].copy()
             
             if not custom_df.empty:
-                # 期間が短い場合は30分単位、長い場合は日次平均
                 delta_days = (end_date - start_date).days
+                
+                # グラフ作成
                 if delta_days <= 7:
                     fig_custom = px.line(custom_df, x='datetime', y='price', color='エリア', title="指定期間の時系列推移")
+                    x_col = 'datetime'
                 else:
                     custom_daily = custom_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                     fig_custom = px.line(custom_daily, x='date', y='price', color='エリア', title="指定期間のエリア別日次平均推移")
+                    x_col = 'date'
+                
+                # 個別エリア選択時のみ平均線を追加
+                if selected_area != "全エリア":
+                    period_avg = custom_df['price'].mean()
+                    fig_custom.add_hline(
+                        y=period_avg, 
+                        line_dash="dash", 
+                        line_color="red", 
+                        annotation_text=f"期間平均: {period_avg:.2f}円", 
+                        annotation_position="bottom right"
+                    )
                 
                 fig_custom.update_layout(hovermode="x unified")
                 st.plotly_chart(fig_custom, use_container_width=True)
 
-        # --- ③ 固定期間トレンド分析（既存機能の維持） ---
+        # --- ③ 定型トレンド分析（先祖帰り禁止・全エリア個別表示維持） ---
         st.markdown('<div class="section-header">📅 定型トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
 
         def plot_all_periods(days, title, is_hourly=False):
