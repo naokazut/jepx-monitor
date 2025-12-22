@@ -5,9 +5,9 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 # 1. ページ設定
-st.set_page_config(page_title="JEPXスポット価格 統合分析ダッシュボード", layout="wide")
+st.set_page_config(page_title="JEPX価格分析ダッシュボード", layout="wide")
 
-# 2. データの読み込みと加工
+# 2. データの読み込み
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/spot_2025.csv")
@@ -20,7 +20,6 @@ def load_data():
     if '時刻' not in df.columns:
         df['時刻'] = df['time_code'].apply(code_to_time)
     
-    # 連続時系列用の日時列
     df['datetime'] = pd.to_datetime(df['date'].dt.strftime('%Y-%m-%d') + ' ' + df['時刻'])
     
     if 'area' in df.columns:
@@ -74,8 +73,8 @@ try:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("平均価格", f"{avg_p:.2f} 円")
-        col2.metric("最高価格", f"{max_row['price']:.2f} 円", help=f"エリア: {max_row.get('エリア', '不明')}")
-        col3.metric("最低価格", f"{min_row['price']:.2f} 円", help=f"エリア: {min_row.get('エリア', '不明')}")
+        col2.metric("最高価格", f"{max_row['price']:.2f} 円")
+        col3.metric("最低価格", f"{min_row['price']:.2f} 円")
 
         # ① 基準日の詳細推移
         fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, 
@@ -83,16 +82,20 @@ try:
         fig_today.update_layout(hovermode="x unified", xaxis=dict(tickmode='linear', dtick=4))
         st.plotly_chart(fig_today, use_container_width=True)
 
-        # 共通の平均線描画ロジック
-        def add_mean_line(fig, data_df, label_prefix="期間平均"):
+        # 【修正】平均線を強調するロジック
+        def add_enhanced_mean_line(fig, data_df, label_prefix="期間平均"):
             if selected_area != "全エリア":
                 m_val = data_df['price'].mean()
                 fig.add_hline(
                     y=m_val, 
                     line_dash="dash", 
-                    line_color="red", 
-                    annotation_text=f"{label_prefix}: {m_val:.2f}円", 
-                    annotation_position="bottom right"
+                    line_color="#E74C3C",  # より鮮やかな赤
+                    line_width=3,          # 線を太く
+                    annotation_text=f" <b>{label_prefix}: {m_val:.2f}円</b> ", 
+                    annotation_position="top right",
+                    annotation_font_size=16,
+                    annotation_font_color="white",
+                    annotation_bgcolor="#E74C3C" # ラベルの背景に色を付けて強調
                 )
             return fig
 
@@ -115,11 +118,11 @@ try:
                     custom_daily = custom_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                     fig_custom = px.line(custom_daily, x='date', y='price', color='エリア', title="指定期間のエリア別日次平均推移")
                 
-                fig_custom = add_mean_line(fig_custom, custom_df)
+                fig_custom = add_enhanced_mean_line(fig_custom, custom_df)
                 fig_custom.update_layout(hovermode="x unified")
                 st.plotly_chart(fig_custom, use_container_width=True)
 
-        # --- ③ 定型トレンド分析（全グラフ平均線対応） ---
+        # --- ③ 定型トレンド分析 ---
         st.markdown('<div class="section-header">📅 定型トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
 
         def plot_all_periods(days, title, is_hourly=False):
@@ -136,8 +139,7 @@ try:
                     daily_df = term_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                     fig = px.line(daily_df, x='date', y='price', color='エリア', title=title)
                 
-                # 個別エリア選択時に平均線を追加
-                fig = add_mean_line(fig, term_df)
+                fig = add_enhanced_mean_line(fig, term_df)
                 fig.update_layout(hovermode="x unified")
                 st.plotly_chart(fig, use_container_width=True)
 
