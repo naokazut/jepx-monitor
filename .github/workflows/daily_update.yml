@@ -28,6 +28,3 @@ jobs:
           git commit -m "Update data: $(date +'%Y-%m-%d')" || exit 0
           git pull --rebase origin main
           git push origin main
-      
-          git commit -m "Update data: $(date +'%Y-%m-%d')" || exit 0
-          git push
