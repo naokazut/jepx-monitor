@@ -2,8 +2,8 @@ name: JEPX Daily Update
 
 on:
   schedule:
-    - cron: '30 3 * * *' # 日本時間の12:30に自動実行
-  workflow_dispatch: # 手動実行ボタンを表示
+    - cron: '30 3 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,18 +12,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          
       - name: Install dependencies
         run: pip install pandas requests
-        
       - name: Run script
         run: python fetch_data.py
-        
       - name: Commit and Push
         run: |
           git config user.name "github-actions[bot]"
