@@ -2,6 +2,32 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# データの読み込み
+df = pd.read_csv('data/spot_2025.csv')
+
+# 日付選択
+dates = df['date'].unique()
+selected_date = st.selectbox('日付を選択', dates)
+
+# エリア選択肢の準備（全エリアを追加）
+areas = ['東京', '関西', '中部', '九州', '北海道', '東北', '北陸', '中国', '四国']
+selected_area = st.selectbox('エリアを選択', ['全エリア'] + areas)
+
+# 選択された日付でフィルタリング
+df_filtered = df[df['date'] == selected_date]
+
+if selected_area == '全エリア':
+    # 全エリアが選ばれた場合：全エリアを1つのグラフに表示
+    fig = px.line(df_filtered, x='時刻', y=areas, 
+                  title=f"{selected_date} の全エリア推移",
+                  labels={'value': 'price', 'variable': 'エリア'})
+else:
+    # 特定のエリアが選ばれた場合：そのエリアのみ表示
+    fig = px.line(df_filtered, x='時刻', y=selected_area, 
+                  title=f"{selected_date} の推移 ({selected_area})")
+
+st.plotly_chart(fig)
+
 # ページ設定
 st.set_page_config(page_title="JEPX価格モニター", layout="wide")
 
