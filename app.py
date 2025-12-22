@@ -4,7 +4,7 @@ import plotly.express as px
 from datetime import timedelta
 
 # 1. ページ設定
-st.set_page_config(page_title="JEPXスポット価格 統合分析ダッシュボード", layout="wide")
+st.set_page_config(page_title="JEPX価格分析ダッシュボード", layout="wide")
 
 # 2. データの読み込みと加工（キャッシュ機能）
 @st.cache_data
@@ -12,7 +12,7 @@ def load_data():
     df = pd.read_csv("data/spot_2025.csv")
     df['date'] = pd.to_datetime(df['date'])
     
-    # 時刻変換（time_code -> 00:00形式）
+    # 時刻変換（time_code 1-48 -> 00:00形式）
     def code_to_time(code):
         total_minutes = (int(code) - 1) * 30
         return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
@@ -20,9 +20,10 @@ def load_data():
     if '時刻' not in df.columns:
         df['時刻'] = df['time_code'].apply(code_to_time)
     
-    # 【重要】連続時系列グラフ用の日時列を作成
+    # 連続時系列グラフ用の日時列を作成
     df['datetime'] = pd.to_datetime(df['date'].dt.strftime('%Y-%m-%d') + ' ' + df['時刻'])
     
+    # エリア列の名称を統一
     if 'area' in df.columns:
         df = df.rename(columns={'area': 'エリア'})
     
@@ -63,10 +64,10 @@ try:
         st.subheader(f"📊 {selected_date} の統計（{display_name}）")
         col1, col2, col3 = st.columns(3)
         col1.metric("平均価格", f"{avg_p:.2f} 円")
-        col2.metric("最高価格", f"{max_row['price']:.2f} 円", help=f"発生時刻: {max_row['時刻']}")
-        col3.metric("最低価格", f"{min_row['price']:.2f} 円", help=f"発生時刻: {min_row['時刻']}")
+        col2.metric("最高価格", f"{max_row['price']:.2f} 円", help=f"時刻: {max_row['時刻']}")
+        col3.metric("最低価格", f"{min_row['price']:.2f} 円", help=f"時刻: {min_row['時刻']}")
 
-        # --- ① 基準日の詳細（尺度：時刻） ---
+        # --- ① 基準日の詳細（詳細推移） ---
         if selected_area == "全エリア":
             fig_day = px.line(day_df, x='時刻', y='price', color='エリア', title=f"{selected_date} 全エリア詳細推移")
         else:
@@ -77,29 +78,49 @@ try:
 
         st.markdown('<div class="section-header">📅 期間別トレンド分析</div>', unsafe_allow_html=True)
 
-        # --- ② 直近7日間の推移（尺度：連続した日付・時間） ---
-        st.write("### ① 直近7日間の推移（時系列連続）")
-        start_date_7d = pd.to_datetime(selected_date) - timedelta(days=7)
-        
-        if selected_area == "全エリア":
-            mask_7d = (df['date'] >= start_date_7d) & (df['date'] <= pd.to_datetime(selected_date))
-            # 全エリアの場合は全国平均の連続時系列を作成
-            trend_7d = df[mask_7d].groupby('datetime')['price'].mean().reset_index()
-        else:
-            mask_7d = (df['date'] >= start_date_7d) & (df['date'] <= pd.to_datetime(selected_date)) & (df['エリア'] == selected_area)
-            trend_7d = df[mask_7d].copy()
-
-        if not trend_7d.empty:
-            # 横軸に datetime を使用することで、7日間が一本の線でつながります
-            fig_7d = px.line(trend_7d, x='datetime', y='price', 
-                             title=f"{display_name}：直近7日間の価格変動",
-                             labels={'datetime': '日時', 'price': '価格 (円)'})
-            fig_7d.update_traces(line_color='#00CC96')
-            fig_7d.update_layout(hovermode="x unified")
-            st.plotly_chart(fig_7d, use_container_width=True)
-
-        # --- ③ 長期トレンド（尺度：日付単位の集計） ---
-        def plot_long_term(days, title):
+        # 共通のグラフ描画関数
+        def plot_term_trend(days, title, is_hourly=False):
             start_date = pd.to_datetime(selected_date) - timedelta(days=days)
-            if selected_area == "全エリア":
-                term_df
+            mask = (df['date'] >= start_date) & (df['date'] <= pd.to_datetime(selected_date))
+            
+            if selected_area != "全エリア":
+                mask &= (df['エリア'] == selected_area)
+            
+            term_df = df[mask].copy()
+            
+            if not term_df.empty:
+                if is_hourly:
+                    # ① 7日間用：時系列を繋げて表示
+                    if selected_area == "全エリア":
+                        term_df = term_df.groupby('datetime')['price'].mean().reset_index()
+                    fig = px.line(term_df, x='datetime', y='price', title=title)
+                    fig.update_traces(line_color='#00CC96')
+                else:
+                    # ②〜⑤ 長期用：日次集計
+                    daily = term_df.groupby('date')['price'].agg(['mean', 'max', 'min']).reset_index()
+                    fig = px.line(daily, x='date', y=['mean', 'max', 'min'], title=title)
+                
+                fig.update_layout(hovermode="x unified")
+                st.plotly_chart(fig, use_container_width=True)
+
+        # 順序通りに表示
+        st.write("### ① 直近7日間の推移（時系列連続）")
+        plot_term_trend(7, f"{display_name}：過去7日間の連続推移", is_hourly=True)
+
+        st.write("### ② 直近1ヶ月のトレンド")
+        plot_term_trend(30, f"{display_name}：過去1ヶ月（日次）")
+
+        st.write("### ③ 直近3ヶ月のトレンド")
+        plot_term_trend(90, f"{display_name}：過去3ヶ月（日次）")
+
+        st.write("### ④ 直近6ヶ月のトレンド")
+        plot_term_trend(180, f"{display_name}：過去6ヶ月（日次）")
+
+        st.write("### ⑤ 直近1年のトレンド")
+        plot_term_trend(365, f"{display_name}：過去1年（日次）")
+
+    else:
+        st.warning(f"{selected_date} のデータが見つかりません。")
+
+except Exception as e:
+    st.error(f"エラーが発生しました: {e}")
