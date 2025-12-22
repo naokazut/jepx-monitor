@@ -133,3 +133,31 @@ try:
                 if is_hourly:
                     fig = px.line(term_df, x='datetime', y='price', color='エリア', title=title)
                 else:
+                    daily_df = term_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
+                    fig = px.line(daily_df, x='date', y='price', color='エリア', title=title)
+                
+                # 個別エリア選択時に平均線を追加
+                fig = add_mean_line(fig, term_df)
+                fig.update_layout(hovermode="x unified")
+                st.plotly_chart(fig, use_container_width=True)
+
+        st.write("### ① 直近7日間の推移（時系列連続）")
+        plot_all_periods(7, f"{display_name}：過去7日間の連続推移", is_hourly=True)
+
+        st.write("### ② 直近1ヶ月のトレンド")
+        plot_all_periods(30, f"{display_name}：過去1ヶ月のエリア別平均推移")
+
+        st.write("### ③ 直近3ヶ月のトレンド")
+        plot_all_periods(90, f"{display_name}：過去3ヶ月のエリア別平均推移")
+
+        st.write("### ④ 直近6ヶ月のトレンド")
+        plot_all_periods(180, f"{display_name}：過去6ヶ月のエリア別平均推移")
+
+        st.write("### ⑤ 直近1年のトレンド")
+        plot_all_periods(365, f"{display_name}：過去1年のエリア別平均推移")
+
+    else:
+        st.warning("データが見つかりません。")
+
+except Exception as e:
+    st.error(f"エラーが発生しました: {e}")
