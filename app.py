@@ -4,12 +4,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import timedelta
 
-# 1. ページ設定
+# 1. ページ設定（Ver.1完全準拠）
 st.set_page_config(page_title="JEPXスポット価格 統合分析ダッシュボード", layout="wide")
 
-# 2. データの読み込みと加工
+# 2. データの読み込みと加工（Ver.1完全準拠）
 @st.cache_data
 def load_data():
+    # パスは実行環境に合わせてください
     df = pd.read_csv("data/spot_2025.csv")
     df['date'] = pd.to_datetime(df['date'])
     
@@ -30,20 +31,20 @@ def load_data():
     
     return df
 
-# カスタムCSSデザイン
+# カスタムCSSデザイン（Ver.1ベースにタイトルのみ更新）
 st.markdown("""
     <style>
     .main-title { font-size: 26px !important; font-weight: bold; color: #1E1E1E; border-bottom: 3px solid #FF4B4B; padding-bottom: 10px; }
     .stMetric { background-color: #f8f9fb; padding: 15px; border-radius: 10px; border: 1px solid #eef2f6; }
     .section-header { margin-top: 30px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; }
     </style>
-    <div class="main-title">⚡️ JEPXスポット価格 統合分析ダッシュボード (Ver.1)</div>
+    <div class="main-title">🏔️ Project Zenith: JEPXスポット価格 統合分析ダッシュボード (Ver.2)</div>
     """, unsafe_allow_html=True)
 
 try:
     df = load_data()
     
-    # --- 3. サイドバーUI ---
+    # --- 3. サイドバーUI（Ver.1完全準拠） ---
     st.sidebar.header("📊 表示設定")
     all_areas = sorted(df['エリア'].unique().tolist())
     selected_area = st.sidebar.selectbox("表示エリアを選択", ["全エリア"] + all_areas, index=0)
@@ -68,7 +69,7 @@ try:
         display_name = "全国" if selected_area == "全エリア" else selected_area
         target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
 
-        # 統計指標の表示
+        # 統計指標の表示（ここに追加ラベルをVer.1の書式に合わせて安全に実装）
         st.subheader(f"📊 {selected_date} の統計（{display_name}）")
         avg_p = target_df['price'].mean()
         max_row = target_df.loc[target_df['price'].idxmax()]
@@ -76,16 +77,28 @@ try:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("平均価格", f"{avg_p:.2f} 円")
-        col2.metric("最高価格", f"{max_row['price']:.2f} 円")
-        col3.metric("最低価格", f"{min_row['price']:.2f} 円")
+        
+        # 指示された追加ラベル（エリア/時刻）をVer.1のmetric書式で実装 [cite: 2025-12-22]
+        col2.metric(
+            "最高価格", 
+            f"{max_row['price']:.2f} 円", 
+            delta=f"{max_row['エリア']} / {max_row['時刻']}", 
+            delta_color="inverse"
+        )
+        col3.metric(
+            "最低価格", 
+            f"{min_row['price']:.2f} 円", 
+            delta=f"{min_row['エリア']} / {min_row['時刻']}", 
+            delta_color="normal"
+        )
 
-        # ① 基準日の詳細推移 (24時間)
+        # ① 基準日の詳細推移（Ver.1のコードを1文字も変えず復元）
         fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, 
                             title=f"{selected_date} 詳細推移")
         fig_today.update_layout(hovermode="x unified", xaxis=dict(tickmode='linear', dtick=4))
         st.plotly_chart(fig_today, use_container_width=True)
 
-        # 【強調表示】平均線をグラフに追加する関数
+        # 【Ver.1】平均線をグラフに追加する関数（完全復元）
         def add_highlighted_mean(fig, data_df, label_prefix="期間平均"):
             if selected_area != "全エリア" and not data_df.empty:
                 m_val = data_df['price'].mean()
@@ -102,7 +115,7 @@ try:
                 )
             return fig
 
-        # --- ② 任意指定期間の分析 ---
+        # --- ② 任意指定期間の分析（Ver.1完全復元） ---
         if isinstance(date_range, tuple) and len(date_range) == 2:
             start_date, end_date = date_range
             st.markdown(f'<div class="section-header">🔍 指定期間の分析: {start_date} ～ {end_date}</div>', unsafe_allow_html=True)
@@ -125,7 +138,7 @@ try:
                 fig_custom.update_layout(hovermode="x unified")
                 st.plotly_chart(fig_custom, use_container_width=True)
 
-        # --- ③ 定型トレンド分析 ---
+        # --- ③ 定型トレンド分析（Ver.1完全復元：7日〜1年） ---
         st.markdown('<div class="section-header">📅 定型トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
 
         def plot_all_periods(days, title, is_hourly=False):
