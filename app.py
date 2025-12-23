@@ -3,16 +3,17 @@ import pandas as pd
 import plotly.express as px
 from datetime import timedelta
 
-# 1. ページ設定
+# 1. ページ基本設定
 st.set_page_config(page_title="Project Zenith - JEPX分析", layout="wide")
 
-# 2. データの読み込み
+# 2. データの読み込みと確実な前処理
 @st.cache_data
 def load_data():
-    # パスは環境に合わせて調整してください
+    # パスは実行環境に合わせて調整してください
     df = pd.read_csv("data/spot_2025.csv")
     df['date'] = pd.to_datetime(df['date'])
     
+    # 時刻コードをhh:mm形式に変換
     def code_to_time(code):
         total_minutes = (int(code) - 1) * 30
         return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
@@ -20,6 +21,7 @@ def load_data():
     if '時刻' not in df.columns:
         df['時刻'] = df['time_code'].apply(code_to_time)
     
+    # カラム名の正規化
     if 'area' in df.columns:
         df = df.rename(columns={'area': 'エリア'})
     
@@ -45,11 +47,11 @@ try:
     max_date = df['date'].dt.date.max()
     selected_date = st.sidebar.date_input("基準日を選択", value=max_date)
 
-    # --- 4. 統計メトリクス (最高・最低価格ラベルの追加実装) ---
+    # --- 4. 統計メトリクス (最高・最低価格の詳細ラベル表示) ---
     day_df = df[df['date'].dt.date == selected_date].copy()
 
     if not day_df.empty:
-        # メトリクス算出用のデータ（Ver.1と同様のロジック）
+        # メトリクス算出用のデータ
         target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
         display_name = "全国" if selected_area == "全エリア" else selected_area
 
@@ -61,23 +63,33 @@ try:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("平均価格", f"{avg_p:.2f} 円")
-        # エリア/時刻ラベルを追加 [cite: 2025-12-22]
-        col2.metric("最高価格", f"{max_row['price']:.2f} 円", delta=f"{max_row['エリア']} / {max_row['時刻']}", delta_color="inverse")
-        col3.metric("最低価格", f"{min_row['price']:.2f} 円", delta=f"{min_row['エリア']} / {min_row['時刻']}", delta_color="normal")
+        
+        # どのエリアの何時かを表示するラベル [cite: 2025-12-22]
+        col2.metric("最高価格", f"{max_row['price']:.2f} 円", 
+                    delta=f"{max_row['エリア']} / {max_row['時刻']}", delta_color="inverse")
+        col3.metric("最低価格", f"{min_row['price']:.2f} 円", 
+                    delta=f"{min_row['エリア']} / {min_row['時刻']}", delta_color="normal")
 
-        # --- 5. 詳細推移グラフ (バージョン1の描画方式を完全復旧) ---
-        # 全エリアのデータを確実に表示するため、シンプルに color 引数のみを使用
+        # --- 5. 詳細推移グラフ (バージョン1の安定ロジックを完全復元) ---
+        st.markdown(f"### {selected_date} 詳細推移")
+        
+        # バージョン1で正常動作していた最もシンプルな描画設定
         fig_today = px.line(
             target_df, 
             x='時刻', 
             y='price', 
             color='エリア' if selected_area == "全エリア" else None,
-            title=f"{selected_date} 詳細推移 ({display_name})"
+            title=f"{selected_date} 詳細推移 ({display_name})",
+            template="plotly_white"
         )
-        fig_today.update_layout(hovermode="x unified", xaxis=dict(tickmode='linear', dtick=4))
+        
+        fig_today.update_layout(
+            hovermode="x unified",
+            xaxis=dict(tickmode='linear', dtick=4)
+        )
         st.plotly_chart(fig_today, use_container_width=True)
 
-        # --- 6. 期間トレンド分析 (Ver.1全機能：直近7日間〜1年をタブで維持) ---
+        # --- 6. 期間トレンド分析 (Ver.1全機能：直近7日間〜1年を維持) ---
         st.markdown("---")
         st.subheader("📅 期間トレンド分析")
 
@@ -90,15 +102,16 @@ try:
             if area_filter != "全エリア":
                 t_df = t_df[t_df['エリア'] == area_filter]
             
-            # 日次平均を計算して描画
-            daily_data = t_df.groupby(t_df['date'].dt.date)['price'].mean().reset_index()
-            fig = px.line(daily_data, x='date', y='price', title=tab_title, markers=True)
+            # 日次平均を計算して描画 [cite: 2025-12-21]
+            daily_avg = t_df.groupby(t_df['date'].dt.date)['price'].mean().reset_index()
             
-            period_avg = daily_data['price'].mean()
-            fig.add_hline(y=period_avg, line_dash="dash", line_color="red", annotation_text=f"平均: {period_avg:.2f}円")
+            fig = px.line(daily_avg, x='date', y='price', title=tab_title, markers=True)
+            period_mean = daily_avg['price'].mean()
+            fig.add_hline(y=period_mean, line_dash="dash", line_color="red", 
+                          annotation_text=f" 期間平均: {period_mean:.2f}円 ")
             st.plotly_chart(fig, use_container_width=True)
 
-        # 全ての期間比較機能をタブで完全に実装 [cite: 2025-12-21]
+        # これまでに実現した全ての期間タブを維持 [cite: 2025-12-21, 2025-12-22]
         tabs = st.tabs(["直近7日間", "直近1ヶ月", "直近3ヶ月", "直近6ヶ月", "直近1年"])
         with tabs[0]: plot_period_trend(selected_area, 7, "過去7日間の平均価格推移")
         with tabs[1]: plot_period_trend(selected_area, 30, "過去1ヶ月の平均価格推移")
@@ -110,4 +123,4 @@ try:
         st.warning(f"{selected_date} のデータが見つかりません。")
 
 except Exception as e:
-    st.error(f"⚠️ 予期せぬエラーが発生しました: {e}")
+    st.error(f"⚠️ データの処理中にエラーが発生しました: {e}")
