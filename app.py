@@ -21,14 +21,14 @@ def load_data():
         df = df.rename(columns={'area': 'エリア'})
     return df
 
-# CSSデザイン
+# CSSデザイン (スマホ向けに余白をさらに最適化)
 st.markdown("""
     <style>
-    .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; border-bottom: 3px solid #3498DB; padding-bottom: 10px; }
-    .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
-    .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 16px; }
+    .main-title { font-size: 22px !important; font-weight: bold; color: #1E1E1E; border-bottom: 3px solid #3498DB; padding-bottom: 5px; }
+    .stMetric { background-color: #f8f9fb; padding: 8px; border-radius: 10px; border: 1px solid #eef2f6; }
+    .section-header { margin-top: 20px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 14px; }
     </style>
-    <div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.4)</div>
+    <div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.5)</div>
     """, unsafe_allow_html=True)
 
 try:
@@ -50,25 +50,34 @@ try:
         max_value=max_date
     )
 
-    # 共通のレイアウト更新関数（スマホ見切れ対策）
+    # 【修正】レイアウト更新関数（凡例の重なり防止）
     def update_chart_layout(fig, title_text):
         fig.update_layout(
-            title=title_text,
+            title=dict(text=title_text, font=dict(size=16)),
             hovermode="x unified",
             dragmode=False,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            margin=dict(l=10, r=10, t=50, b=10),
+            # 凡例をグラフの下（y=-0.2以降）に配置し、重なりを回避
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.25, 
+                xanchor="center",
+                x=0.5,
+                font=dict(size=10),
+                traceorder="normal",
+                itemwidth=30
+            ),
+            margin=dict(l=10, r=10, t=50, b=80), # 下側の余白を広げて凡例スペースを確保
             hoverlabel=dict(
                 bgcolor="rgba(255, 255, 255, 0.9)",
-                font_size=11,  # スマホ用に少し小さく
+                font_size=11,
                 namelength=-1
             )
         )
-        # 吹き出しのテキストを「エリア名: 価格」に短縮して高さを抑える
         fig.update_traces(hovertemplate="%{fullData.name}: %{y:.1f}円<extra></extra>")
         return fig
 
-    # 4. 統計指標表示
+    # 4. 統計指標
     day_df = df[df['date'].dt.date == selected_date].copy()
     if not day_df.empty:
         target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
@@ -85,7 +94,7 @@ try:
         fig_today = update_chart_layout(fig_today, f"{selected_date} 詳細推移")
         st.plotly_chart(fig_today, use_container_width=True, config={'displayModeBar': False})
 
-        # 6. 任意期間の分析
+        # 6. 任意期間の分析 (復旧済み)
         if isinstance(date_range, tuple) and len(date_range) == 2:
             s_d, e_d = date_range
             st.markdown(f'<div class="section-header">🔍 任意指定期間: {s_d} ～ {e_d}</div>', unsafe_allow_html=True)
@@ -94,7 +103,6 @@ try:
             
             c_df = df[mask].copy()
             if not c_df.empty:
-                # 期間が長い場合は日次平均、短い場合は時系列
                 is_short = (e_d - s_d).days <= 7
                 plot_df = c_df if is_short else c_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                 x_col = 'datetime' if is_short else 'date'
@@ -116,7 +124,6 @@ try:
                 
                 t_df = df[mask].copy()
                 if not t_df.empty:
-                    # 7日間は1時間単位、それ以外は日次 [cite: 2025-12-21, 2025-12-22]
                     if days == 7:
                         fig = px.line(t_df, x='datetime', y='price', color='エリア')
                     else:
