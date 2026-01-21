@@ -52,7 +52,7 @@ try:
     df, status_msg = load_data()
     today_jst = datetime.now(JST)
     
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.9.2-Revised)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.9)</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="today-date-banner">現在時刻 (JST): {today_jst.strftime("%Y/%m/%d %H:%M")}</div>', unsafe_allow_html=True)
 
     if df is not None:
