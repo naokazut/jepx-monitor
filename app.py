@@ -8,7 +8,7 @@ import os
 import pytz
 
 # --- Project Zenith: JEPX統合分析 (Version 9 確定正本) ---
-# 【修正】スマホでのツールチップ常駐（白い巨大矩形）を廃止。タップ切り替えを最適化し、表示言語のデグレを修復。
+# 【修正】スマホでのタップ判定領域を大幅拡大し、吹き出しの反応性と視認性を両立。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -45,6 +45,11 @@ st.markdown("""
     .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
     .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
     .sub-title { font-size: 18px !important; font-weight: bold !important; margin-top: 10px !important; margin-bottom: 15px !important; display: block; color: #31333F; }
+    
+    /* 吹き出しの文字切れをCSSレベルで防止 */
+    .js-plotly-plot .plotly .hoverlayer .hovertext {
+        filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.1));
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -72,22 +77,26 @@ try:
         date_range = st.sidebar.date_input("分析対象期間", value=(selected_date - timedelta(days=7), selected_date),
                                           min_value=df['date'].min().date(), max_value=latest_date_in_csv)
 
-        # 🛠️ グラフ表示の最適化（スマホ常駐回避 & 日本語維持）
+        # 🛠️ 判定領域拡大 & 日本語固定設定
         def update_chart_layout(fig, x_label="時刻", y_label="価格(円)"):
             fig.update_layout(
-                hovermode='closest', # 指で触れた点のみ表示（常駐を防ぐ最重要設定）
-                hoverdistance=5,     # 感度を絞り、指を離せばすぐ消えるように調整
-                clickmode='event',   # クリック（タップ）に反応
+                hovermode='closest',
+                hoverdistance=50,     # タップ判定を大幅に広げ「不発」を防止
+                spikedistance=50,     # 線に吸い付く距離も同様に設定
                 xaxis_title=x_label,
                 yaxis_title=y_label,
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
                 margin=dict(l=10, r=10, t=20, b=80),
-                dragmode=False       # スマホスクロールとの干渉を防止
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=14,
+                    font_family="sans-serif",
+                    namelength=-1  # エリア名が切れるのを防止
+                )
             )
-            # 全トレースに対して、ホバー情報を明示的に設定（デグレ防止）
+            # 吹き出しのテンプレートを強制指定
             fig.update_traces(
-                hoverlabel=dict(namelength=-1), # 名前を省略しない
-                hovertemplate="<b>%{fullData.name}</b><br>%{x}<br>%{y:.2f} 円<extra></extra>"
+                hovertemplate="<b>%{fullData.name}</b><br>%{x}<br><b>%{y:.2f} 円</b><extra></extra>"
             )
             return fig
 
@@ -96,6 +105,9 @@ try:
             'scrollZoom': False,
             'displaylogo': False
         }
+
+        # 日本語ラベルマッピング
+        LABELS = {"price": "価格(円)", "date": "日付", "datetime": "日時", "エリア": "エリア", "時刻": "時刻", "segment": "時間帯"}
 
         # 1. 統計メトリック表示
         day_df = df[df['date'].dt.date == selected_date].copy()
@@ -113,7 +125,7 @@ try:
 
             # 2. 当日24時間グラフ
             st.markdown(f'<div class="section-header">📈 {selected_date} の30分単位推移</div>', unsafe_allow_html=True)
-            fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True)
+            fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True, labels=LABELS)
             st.plotly_chart(update_chart_layout(fig_today, "時刻", "価格(円)"), use_container_width=True, config=CHART_CONFIG)
 
             # 3. トレンド・多角分析タブ
@@ -131,11 +143,12 @@ try:
                         st.markdown(f'<div class="sub-title">🔍 指定期間 ({s_d}～{e_d}) | 期間平均: {avg_p:.2f}円</div>', unsafe_allow_html=True)
                         is_short = (e_d - s_d).days <= 7
                         fig_custom = px.line(c_df if is_short else c_df.groupby(['date', 'エリア'])['price'].mean().reset_index(), 
-                                             x='datetime' if is_short else 'date', y='price', color='エリア')
+                                             x='datetime' if is_short else 'date', y='price', color='エリア', labels=LABELS)
                         st.plotly_chart(update_chart_layout(fig_custom, "日時" if is_short else "日付", "価格(円)"), use_container_width=True, config=CHART_CONFIG)
 
+            # (定型期間タブは中略 - 同様の update_chart_layout を適用)
             periods = [7, 30, 90, 180, 365]
-            labels = ["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年"]
+            labels_p = ["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年"]
             for i, days in enumerate(periods):
                 with tabs[i+1]:
                     s_date = pd.to_datetime(selected_date) - timedelta(days=days)
@@ -143,9 +156,9 @@ try:
                     if selected_area != "全エリア": t_mask &= (df['エリア'] == selected_area)
                     t_df = df[t_mask].copy()
                     if not t_df.empty:
-                        st.markdown(f'<div class="sub-title">📅 直近{labels[i]}の日別平均 | 期間平均: {t_df["price"].mean():.2f}円</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="sub-title">📅 直近{labels_p[i]}の日別平均 | 期間平均: {t_df["price"].mean():.2f}円</div>', unsafe_allow_html=True)
                         d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
-                        fig = px.line(d_avg, x='date', y='price', color='エリア')
+                        fig = px.line(d_avg, x='date', y='price', color='エリア', labels=LABELS)
                         st.plotly_chart(update_chart_layout(fig, "日付", "平均価格(円)"), use_container_width=True, config=CHART_CONFIG)
 
             with tabs[6]:
@@ -173,7 +186,7 @@ try:
                         c_df['hour'] = c_df['datetime'].dt.hour
                         c_df['segment'] = c_df['hour'].apply(lambda h: '夜中(0-8)' if 0<=h<8 else ('昼間(8-16)' if 8<=h<16 else '夜間(16-24)'))
                         t_res = c_df.groupby(['segment', 'エリア'])['price'].mean().reset_index()
-                        fig_t = px.bar(t_res, x='エリア', y='price', color='segment', barmode='group')
+                        fig_t = px.bar(t_res, x='エリア', y='price', color='segment', barmode='group', labels=LABELS)
                         st.plotly_chart(update_chart_layout(fig_t, "エリア", "平均価格(円)"), use_container_width=True, config=CHART_CONFIG)
         else:
             st.warning(f"選択された日付 {selected_date} のデータが見つかりません。")
