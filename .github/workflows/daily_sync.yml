@@ -2,20 +2,22 @@ name: JEPX Daily Sync
 
 on:
   schedule:
-    # JEPXの更新に合わせて毎日日本時間 13:00 (UTC 4:00) に実行
     - cron: '0 4 * * *'
-  workflow_dispatch: # 手動実行ボタンも追加
+  workflow_dispatch: # 手動実行用ボタン
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # ここで権限を明示的に指定します
     permissions:
-      contents: write # データを保存する権限
+      contents: write
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -25,10 +27,15 @@ jobs:
       - name: Run Update Script
         run: python update_jepx.py
 
-      - name: Commit and Push if changes
+      - name: Commit and Push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add data/*.csv
-          git diff --cached --quiet || git commit -m "Update JEPX data: $(date +'%Y-%m-%d')"
-          git push
+          # 変更がある場合のみコミットし、なければ終了するロジック
+          if ! git diff --cached --quiet; then
+            git commit -m "Update JEPX data: $(date +'%Y-%m-%d %H:%M')"
+            git push origin main
+          else
+            echo "No changes to commit"
+          fi
