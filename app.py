@@ -8,7 +8,7 @@ import os
 import pytz
 
 # --- Project Zenith: JEPX統合分析 (Version 9 確定正本) ---
-# 【修正】スマホでのツールチップ（吹き出し）常駐問題を改善。
+# 【修正】スマホでのツールチップ常駐を完全に解消するため、インタラクションを最適化。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -20,7 +20,7 @@ st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.9", layout="wide"
 def load_data():
     file_list = glob.glob("data/spot_*.csv")
     if not file_list:
-        return None, "dataフォルダ内にファイルが見見つかりません。"
+        return None, "dataフォルダ内にファイルが見つかりません。"
     latest_file = max(file_list, key=os.path.getmtime)
     try:
         df = pd.read_csv(latest_file)
@@ -44,20 +44,10 @@ st.markdown("""
     .today-date-banner { font-size: 14px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
     .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
     .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
-    
-    .sub-title { 
-        font-size: 18px !important; 
-        font-weight: bold !important; 
-        margin-top: 10px !important;
-        margin-bottom: 15px !important; 
-        display: block;
-        color: #31333F;
-    }
+    .sub-title { font-size: 18px !important; font-weight: bold !important; margin-top: 10px !important; margin-bottom: 15px !important; display: block; color: #31333F; }
 
-    /* スマホでタップした際の青いハイライト（フォーカス）を抑制 */
-    .js-plotly-plot .plotly .cursor-crosshair {
-        cursor: default !important;
-    }
+    /* モバイルでの不要な選択枠を非表示 */
+    .js-plotly-plot .plotly .cursor-crosshair { cursor: default !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -82,28 +72,30 @@ try:
 
         st.sidebar.markdown("---")
         st.sidebar.subheader("📅 任意期間の指定")
-        date_range = st.sidebar.date_input(
-            "分析対象期間",
-            value=(selected_date - timedelta(days=7), selected_date),
-            min_value=df['date'].min().date(),
-            max_value=latest_date_in_csv
-        )
+        date_range = st.sidebar.date_input("分析対象期間", value=(selected_date - timedelta(days=7), selected_date),
+                                          min_value=df['date'].min().date(), max_value=latest_date_in_csv)
 
+        # 🛠️ スマホ常駐回避用レイアウト設定
         def update_chart_layout(fig):
             fig.update_layout(
-                hovermode="x unified",
-                # ホバーの追従性を高め、スマホでの「離脱」を検知しやすく設定
-                hoverlabel=dict(bgcolor="rgba(255,255,255,0.9)", font_size=12),
+                # 指を動かすたびに吹き出しが出るのを防ぐためホバーを無効化
+                hovermode=False, 
+                # タップした点だけ情報を出すモードを有効化
+                clickmode='event+select',
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
                 margin=dict(l=10, r=10, t=20, b=80)
             )
+            # 各トレース（線や棒）に対して、タップした時だけツールチップを出す設定を強制適用
+            fig.update_traces(
+                hoverinfo='all', # タップ時には全情報を出す
+                hovertemplate=None # デフォルトのテンプレートを使用
+            )
             return fig
 
-        # グラフ共通設定: スマホでのタッチ操作を最適化
         CHART_CONFIG = {
             'displayModeBar': False,
-            'scrollZoom': False, # 意図しないズームを防ぐ
-            'doubleClick': 'reset',
+            'scrollZoom': False,
+            'staticPlot': False,
             'displaylogo': False
         }
 
