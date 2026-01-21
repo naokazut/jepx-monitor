@@ -14,5 +14,5 @@ jobs:
           python-version: '3.9'
       - name: Install requests
         run: pip install requests
-      - name: Run Test
-        run: python test_2010.py
+      - name: Build History Data
+        run: python build_history.py
