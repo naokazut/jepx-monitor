@@ -37,13 +37,13 @@ Version 9 では、運用の安定性を極限まで高める「通知システ�
 ## 🛠 セットアップと運用
 
 ### ローカル開発
-
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 
+---
 
-### 自動更新スケジュール
+## 自動更新スケジュール
 実行時間: 毎日 日本時間 12:30（UTC 3:30）
 動作: fetch_data.py 実行 → data/spot_2025.csv 更新 → Git Commit & Push
 
