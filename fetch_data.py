@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import os
 import io
+import sys
 
 def fetch_jepx_data():
     # 【徹底調査済み】2025年度の全エリアデータが含まれる唯一の正しいURL
@@ -9,10 +10,15 @@ def fetch_jepx_data():
 
     try:
         # アクセス拒否を防ぐためのヘッダー設定
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status() # ここでエラーがあればログに出る
+        response.raise_for_status() # HTTPステータスエラー（403等）を検知
+        
         response.encoding = 'shift_jis'
+        
+        # 取得データが空でないか、またはHTML（エラーページ）でないか簡易チェック
+        if '<html' in response.text.lower():
+            raise ValueError("取得データがCSVではなくHTML形式です。アクセスが制限されている可能性があります。")
         
         # CSVを読み込み
         df = pd.read_csv(io.StringIO(response.text))
@@ -30,6 +36,9 @@ def fetch_jepx_data():
             actual_col = next((c for c in df.columns if kw in c), None)
             if actual_col:
                 found_columns[actual_col] = kw
+
+        if not found_columns:
+            raise ValueError("CSV内に該当するエリア列が見つかりません。フォーマット変更の可能性があります。")
 
         # 縦持ちデータ（Long format）に変換
         df_melted = pd.melt(
@@ -54,6 +63,8 @@ def fetch_jepx_data():
 
     except Exception as e:
         print(f"URLまたはデータ処理でエラー発生: {e}")
+        # GitHub Actionsに失敗を伝えるために異常終了コードを返す
+        sys.exit(1)
 
 if __name__ == "__main__":
     fetch_jepx_data()
