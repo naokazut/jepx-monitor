@@ -8,7 +8,7 @@ import os
 import pytz
 
 # --- Project Zenith: JEPX統合分析 (Version 9) ---
-# 【修正】任意期間タブの統合、各グラフへの平均単価表示を実装。
+# 【修正】メトリックラベルを一段下げてメニューとの干渉を防止。視認性を向上。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -37,12 +37,24 @@ def load_data():
     except Exception as e:
         return None, f"エラー: {e}"
 
-# CSS
+# CSS (Version 9 のデザインを維持しつつ、ラベル位置のみ調整)
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; }
     .today-date-banner { font-size: 14px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
-    .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
+    
+    /* Metric表示の修正: ラベルを一段下げて被りを防ぐ */
+    [data-testid="stMetric"] { 
+        background-color: #f8f9fb; 
+        padding: 15px 10px 10px 10px !important; /* 上部に余白を確保 */
+        border-radius: 10px; 
+        border: 1px solid #eef2f6; 
+    }
+    [data-testid="stMetricLabel"] {
+        margin-top: 10px !important; /* ラベルを一段下げる */
+        display: block !important;
+    }
+
     .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
     </style>
     """, unsafe_allow_html=True)
@@ -104,7 +116,7 @@ try:
             fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True)
             st.plotly_chart(update_chart_layout(fig_today, ""), use_container_width=True)
 
-            # 3. トレンド・多角分析タブ (任意期間を左端に統合)
+            # 3. トレンド・多角分析タブ
             st.markdown('<div class="section-header">📅 期間トレンド・多角分析</div>', unsafe_allow_html=True)
             tabs = st.tabs(["🔍 指定期間", "7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
             
