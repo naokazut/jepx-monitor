@@ -5,12 +5,16 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import glob
 import os
+import pytz
 
-# --- Project Zenith: JEPX統合分析 (Version 8.3) ---
-# 【変更点】トレンド分析タブに「6ヶ月」を追加。
+# --- Project Zenith: JEPX統合分析 (Version 8.0) ---
+# 【変更点】タイムゾーン（日本標準時）への対応を追加。
+
+# 日本タイムゾーンの設定
+JST = pytz.timezone('Asia/Tokyo')
 
 # 1. ページ設定
-st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.8.3", layout="wide")
+st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.8.0", layout="wide")
 
 # 2. データの読み込み (動的ファイル検知)
 @st.cache_data(ttl=3600)
@@ -46,9 +50,12 @@ st.markdown("""
 
 try:
     df, status_msg = load_data()
-    today_str = datetime.now().strftime('%Y/%m/%d')
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.8.3)</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="today-date-banner">本日の日付: {today_str}</div>', unsafe_allow_html=True)
+    # タイムゾーンを考慮して本日日付を取得
+    today_jst = datetime.now(JST)
+    today_str = today_jst.strftime('%Y/%m/%d')
+    
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.8.0)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="today-date-banner">本日の日付 (JST): {today_str}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="file-info">📂 {status_msg}</div>', unsafe_allow_html=True)
 
     if df is not None:
@@ -60,6 +67,7 @@ try:
             
         all_areas = sorted(df['エリア'].unique().tolist())
         selected_area = st.sidebar.selectbox("表示エリアを選択", ["全エリア"] + all_areas, index=0)
+        
         latest_date_in_csv = df['date'].dt.date.max()
         selected_date = st.sidebar.date_input("分析基準日を選択", value=latest_date_in_csv)
 
@@ -96,11 +104,11 @@ try:
 
             # 多角トレンド分析
             st.markdown('<div class="section-header">📅 多角トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
-            # 6ヶ月タブを追加
+            # 6ヶ月タブを含む
             tabs = st.tabs(["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
             
-            periods = [7, 30, 90, 180, 365] # 180を追加
-            for i in range(5): # ループを5回に拡張
+            periods = [7, 30, 90, 180, 365] 
+            for i in range(5): 
                 with tabs[i]:
                     days = periods[i]
                     s_date = pd.to_datetime(selected_date) - timedelta(days=days)
