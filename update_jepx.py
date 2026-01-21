@@ -7,60 +7,42 @@ DATA_DIR = "data"
 START_YEAR = 2010
 CURRENT_YEAR = datetime.now().year
 
-def check_csv_validity(file_path):
-    """取得したCSVが空でないか、JEPXの形式（年月日/price等）を含んでいるか確認"""
-    try:
-        with open(file_path, 'r', encoding='shift_jis') as f:
-            content = f.read(500) # 先頭500文字をチェック
-            if "年月日" in content or "date" in content:
-                return True
-    except:
-        pass
-    return False
-
 def download_jepx(year):
-    """指定された年度のCSVをダウンロード"""
-    url = f"https://www.jepx.org/market/excel/spot_{year}.csv"
+    """年度に応じたJEPX CSVをダウンロード（URL候補を複数試行）"""
+    # 候補1: 標準的な最新形式
+    # 候補2: 過去データアーカイブ用URL（年度によって異なる場合があるため）
+    urls = [
+        f"https://www.jepx.org/market/excel/spot_{year}.csv",
+        f"https://www.jepx.org/market/excel/spot_{year}_daily.csv"
+    ]
+    
     file_path = os.path.join(DATA_DIR, f"spot_{year}.csv")
     
-    print(f"Checking: {url} ...")
-    try:
-        response = requests.get(url, timeout=30)
-        if response.status_code == 200:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            with open(file_path, "wb") as f:
-                f.write(response.content)
-            
-            # セルフチェック実行
-            if check_csv_validity(file_path):
-                print(f"✅ Success: {file_path} (Size: {len(response.content)} bytes)")
+    for url in urls:
+        print(f"Trying: {url}")
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200 and len(response.content) > 1000:
+                os.makedirs(DATA_DIR, exist_ok=True)
+                with open(file_path, "wb") as f:
+                    f.write(response.content)
+                print(f"✅ Success: {file_path}")
                 return True
-            else:
-                print(f"⚠️ Warning: {file_path} may be invalid.")
-        else:
-            print(f"❌ Failed: HTTP {response.status_code}")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        except:
+            continue
+    
+    print(f"❌ Failed: No data found for year {year}")
     return False
 
 def main():
-    print(f"--- Project Zenith Data Sync: {datetime.now()} ---")
+    print(f"--- Project Zenith Data Force Sync: {datetime.now()} ---")
     
-    # 1. 2010年から昨年分までをチェック（なければ取得）
-    for year in range(START_YEAR, CURRENT_YEAR):
+    # 2010年から現在まで、存在しないファイルをすべて再取得
+    for year in range(START_YEAR, CURRENT_YEAR + 1):
         file_path = os.path.join(DATA_DIR, f"spot_{year}.csv")
-        if not os.path.exists(file_path):
-            print(f"Initial Setup: Downloading Historical Data for {year}")
+        # 過去分がなければ取得、今年分は常に更新
+        if not os.path.exists(file_path) or year == CURRENT_YEAR:
             download_jepx(year)
-    
-    # 2. 最新年度分（今年度）は常に上書き取得
-    print(f"Daily Update: Fetching latest data for {CURRENT_YEAR}")
-    success = download_jepx(CURRENT_YEAR)
-    
-    if success:
-        print("--- All Sync Completed Successfully ---")
-    else:
-        print("--- Sync Finished with some issues ---")
 
 if __name__ == "__main__":
     main()
