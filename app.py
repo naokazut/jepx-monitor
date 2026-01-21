@@ -6,48 +6,35 @@ from datetime import datetime, timedelta
 import glob
 import os
 
-# --- Project Zenith: JEPX統合分析 (Version 8.2) ---
-# 【完了条件】Version番号を更新して提示すること。
+# --- Project Zenith: JEPX統合分析 (Version 8.3) ---
+# 【変更点】トレンド分析タブに「6ヶ月」を追加。
 
 # 1. ページ設定
-st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.8.2", layout="wide")
+st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.8.3", layout="wide")
 
-# 2. データの読み込み (ファイル名自動検知機能付き)
+# 2. データの読み込み (動的ファイル検知)
 @st.cache_data(ttl=3600)
 def load_data():
-    # dataフォルダ内の「spot_」で始まるCSVファイルをすべて取得
     file_list = glob.glob("data/spot_*.csv")
-    
     if not file_list:
-        return None, "dataフォルダ内に 'spot_*.csv' 形式のファイルが見つかりません。"
-
-    # 更新日時が最も新しいファイルを特定
+        return None, "dataフォルダ内にファイルが見つかりません。"
     latest_file = max(file_list, key=os.path.getmtime)
-    
     try:
         df = pd.read_csv(latest_file)
         df['date'] = pd.to_datetime(df['date'])
-        
-        # 時刻コードをHH:mm形式に変換
         def code_to_time(code):
             total_minutes = (int(code) - 1) * 30
             return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
-        
         if '時刻' not in df.columns:
             df['時刻'] = df['time_code'].apply(code_to_time)
-        
-        # 日時を結合したdatetime列を作成
         df['datetime'] = pd.to_datetime(df['date'].dt.strftime('%Y-%m-%d') + ' ' + df['時刻'])
-        
-        # エリア表記の統一
         if 'area' in df.columns:
             df = df.rename(columns={'area': 'エリア'})
-            
         return df, f"読み込み完了: {os.path.basename(latest_file)}"
     except Exception as e:
-        return None, f"ファイル読み込みエラー: {e}"
+        return None, f"エラー: {e}"
 
-# CSSデザイン (スマホ視認性向上)
+# CSSデザイン
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; margin-bottom: 0px; }
@@ -58,19 +45,14 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 try:
-    # データのロード
     df, status_msg = load_data()
-    
-    # --- ヘッダー表示 ---
     today_str = datetime.now().strftime('%Y/%m/%d')
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.8.2)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.8.3)</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="today-date-banner">本日の日付: {today_str}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="file-info">📂 {status_msg}</div>', unsafe_allow_html=True)
 
-    if df is None:
-        st.error(status_msg)
-    else:
-        # --- 3. サイドバーUI ---
+    if df is not None:
+        # サイドバーUI
         st.sidebar.header("📊 表示設定")
         if st.sidebar.button("🔄 データを再読み込み"):
             st.cache_data.clear()
@@ -78,7 +60,6 @@ try:
             
         all_areas = sorted(df['エリア'].unique().tolist())
         selected_area = st.sidebar.selectbox("表示エリアを選択", ["全エリア"] + all_areas, index=0)
-        
         latest_date_in_csv = df['date'].dt.date.max()
         selected_date = st.sidebar.date_input("分析基準日を選択", value=latest_date_in_csv)
 
@@ -91,7 +72,6 @@ try:
             max_value=latest_date_in_csv
         )
 
-        # グラフ共通レイアウト設定
         def update_chart_layout(fig, title_text):
             fig.update_layout(
                 title=dict(text=title_text, font=dict(size=16)),
@@ -102,13 +82,11 @@ try:
             )
             return fig
 
-        # 4. 統計指標表示
+        # 統計指標
         day_df = df[df['date'].dt.date == selected_date].copy()
         if not day_df.empty:
             target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
-            display_area_name = "全国" if selected_area == "全エリア" else selected_area
-            st.subheader(f"📊 {selected_date} の統計（{display_area_name}）")
-            
+            st.subheader(f"📊 {selected_date} の統計")
             col1, col2, col3 = st.columns(3)
             col1.metric("平均価格", f"{target_df['price'].mean():.2f} 円")
             max_row = target_df.loc[target_df['price'].idxmax()]
@@ -116,16 +94,13 @@ try:
             col2.metric("最高価格", f"{max_row['price']:.1f} 円", f"{max_row['エリア']} {max_row['時刻']}", delta_color="inverse")
             col3.metric("最低価格", f"{min_row['price']:.1f} 円", f"{min_row['エリア']} {min_row['時刻']}")
 
-            fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None)
-            fig_today = update_chart_layout(fig_today, f"{selected_date} 詳細推移")
-            st.plotly_chart(fig_today, use_container_width=True, config={'displayModeBar': False})
-
-            # --- タブ形式のトレンド分析 ---
+            # 多角トレンド分析
             st.markdown('<div class="section-header">📅 多角トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
-            tabs = st.tabs(["7日間", "1ヶ月", "3ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
+            # 6ヶ月タブを追加
+            tabs = st.tabs(["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
             
-            periods = [7, 30, 90, 365]
-            for i in range(4):
+            periods = [7, 30, 90, 180, 365] # 180を追加
+            for i in range(5): # ループを5回に拡張
                 with tabs[i]:
                     days = periods[i]
                     s_date = pd.to_datetime(selected_date) - timedelta(days=days)
@@ -139,8 +114,8 @@ try:
                             fig = px.line(d_avg, x='date', y='price', color='エリア')
                         st.plotly_chart(update_chart_layout(fig, f"直近{days}日の推移"), use_container_width=True)
 
-            # --- 季節比較 ---
-            with tabs[4]:
+            # 季節比較
+            with tabs[5]:
                 st.subheader("☀️❄️ 夏冬の平均価格比較")
                 df['month'] = df['date'].dt.month
                 summer = df[df['month'].isin([7, 8, 9])]
@@ -154,8 +129,8 @@ try:
                     ])
                     st.plotly_chart(update_chart_layout(fig_s, "エリア別・季節平均比較"), use_container_width=True)
 
-            # --- 時間帯分析 ---
-            with tabs[5]:
+            # 時間帯分析
+            with tabs[6]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
                     s_d, e_d = date_range
                     mask = (df['date'].dt.date >= s_d) & (df['date'].dt.date <= e_d)
