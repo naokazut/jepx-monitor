@@ -149,4 +149,29 @@ try:
                 summer = df[df['month'].isin([7, 8, 9])]
                 winter = df[df['month'].isin([12, 1, 2])]
                 if not summer.empty and not winter.empty:
-                    s
+                    s_avg = summer.groupby('エリア')['price'].mean().reset_index()
+                    w_avg = winter.groupby('エリア')['price'].mean().reset_index()
+                    fig_s = go.Figure(data=[
+                        go.Bar(name='夏(7-9月)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
+                        go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
+                    ])
+                    st.plotly_chart(update_chart_layout(fig_s, "季節平均のエリア別比較"), use_container_width=True)
+
+            # --- タブ[7]: 時間帯分析 ---
+            with tabs[7]:
+                if isinstance(date_range, tuple) and len(date_range) == 2:
+                    s_d, e_d = date_range
+                    mask = (df['date'].dt.date >= s_d) & (df['date'].dt.date <= e_d)
+                    if selected_area != "全エリア": mask &= (df['エリア'] == selected_area)
+                    c_df = df[mask].copy()
+                    if not c_df.empty:
+                        c_df['hour'] = c_df['datetime'].dt.hour
+                        c_df['segment'] = c_df['hour'].apply(lambda h: '昼間(8-16)' if 8<=h<16 else ('夜間(16-24)' if 16<=h<24 else '夜中(0-8)'))
+                        t_res = c_df.groupby(['segment', 'エリア'])['price'].mean().reset_index()
+                        fig_t = px.bar(t_res, x='エリア', y='price', color='segment', barmode='group')
+                        st.plotly_chart(update_chart_layout(fig_t, f"時間帯別平均 (期間: {s_d} ～ {e_d})"), use_container_width=True)
+        else:
+            st.warning(f"選択された日付 {selected_date} のデータが見つかりません。")
+
+except Exception as e:
+    st.error(f"システムエラー: {e}")
