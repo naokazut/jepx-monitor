@@ -1,15 +1,16 @@
-name: JEPX Daily Update
+name: Daily JEPX Data Update
 
 on:
   schedule:
-    - cron: '30 3 * * *'  # 毎日日本時間 12:30 (UTC 3:30)
-  workflow_dispatch:      # 手動実行ボタンを有効化
+    # 日本時間 12:30 (UTC 3:30) に毎日実行
+    - cron: '30 3 * * *'
+  workflow_dispatch: # 手動実行ボタンも維持
 
 jobs:
-  build:
+  update-data:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # リポジトリへの書き込み権限を明示
 
     steps:
       - name: Checkout repository
@@ -19,26 +20,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip' # pipのキャッシュを有効化して高速化
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
 
       - name: Run data fetch script
+        # || exit 0 を削除し、エラー時に通知が飛ぶように修正
         run: python fetch_data.py
 
-      - name: Commit and Push changes
+      - name: Commit and push if changed
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add data/*.csv
-          # 変更がある場合のみコミットし、ない場合は正常終了させる
-          if ! git diff --cached --exit-code; then
-            git commit -m "Update JEPX data: $(date +'%Y-%m-%d')"
-            git pull --rebase origin main
-            git push origin main
-          else
-            echo "No changes to commit"
-          fi
+          # 変更がある場合のみコミット
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update JEPX data" && git push)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
