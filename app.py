@@ -8,7 +8,7 @@ import os
 import pytz
 
 # --- Project Zenith: JEPX統合分析 (Version 9) ---
-# 【修正】任意期間タブの統合、各グラフへの平均単価表示を実装。
+# 【修正】スマホ表示時のラベル重なり問題をCSSとレイアウト調整で解消。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -21,6 +21,7 @@ def load_data():
     file_list = glob.glob("data/spot_*.csv")
     if not file_list:
         return None, "dataフォルダ内にファイルが見つかりません。"
+    # 最新の更新日時を持つファイルを取得
     latest_file = max(file_list, key=os.path.getmtime)
     try:
         df = pd.read_csv(latest_file)
@@ -37,13 +38,40 @@ def load_data():
     except Exception as e:
         return None, f"エラー: {e}"
 
-# CSS
+# --- CSS: スマホ視認性向上・重なり防止 ---
 st.markdown("""
     <style>
-    .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; }
-    .today-date-banner { font-size: 14px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
-    .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
-    .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
+    .main-title { font-size: 20px !important; font-weight: bold; color: #1E1E1E; }
+    .today-date-banner { font-size: 12px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
+    
+    /* Metricの重なり防止 */
+    [data-testid="stMetric"] {
+        background-color: #f8f9fb;
+        padding: 15px !important;
+        border-radius: 10px;
+        border: 1px solid #eef2f6;
+        min-width: 120px;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 14px !important;
+        white-space: nowrap !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 22px !important;
+    }
+    /* デルタ（追加情報）の重なりを防ぐための余白 */
+    [data-testid="stMetricDelta"] {
+        font-size: 12px !important;
+        margin-top: 4px !important;
+    }
+
+    .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 14px; }
+    
+    /* タブのフォントサイズ調整(スマホ用) */
+    .stTabs [data-baseweb="tab"] {
+        font-size: 12px !important;
+        padding: 8px 10px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -51,8 +79,8 @@ try:
     df, status_msg = load_data()
     today_jst = datetime.now(JST)
     
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.9)</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="today-date-banner">現在時刻 (JST): {today_jst.strftime("%Y/%m/%d %H:%M")}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX分析 (Ver.9)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="today-date-banner">JST: {today_jst.strftime("%Y/%m/%d %H:%M")}</div>', unsafe_allow_html=True)
 
     if df is not None:
         latest_date_in_csv = df['date'].dt.date.max()
@@ -76,12 +104,21 @@ try:
             max_value=latest_date_in_csv
         )
 
+        # グラフレイアウトの最適化関数
         def update_chart_layout(fig, title_text):
             fig.update_layout(
-                title=dict(text=title_text, font=dict(size=15)),
+                title=dict(text=title_text, font=dict(size=14)),
                 hovermode="x unified",
-                legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
-                margin=dict(l=10, r=10, t=50, b=80)
+                # スマホ対応: 凡例をグラフ上部に配置し、重なりを避ける
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", y=1.02, 
+                    xanchor="right", x=1,
+                    font=dict(size=10)
+                ),
+                margin=dict(l=5, r=5, t=80, b=40),
+                xaxis=dict(tickfont=dict(size=10)),
+                yaxis=dict(tickfont=dict(size=10))
             )
             return fig
 
@@ -91,23 +128,28 @@ try:
             target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
             display_area_name = "全国" if selected_area == "全エリア" else selected_area
             
-            st.subheader(f"📊 {selected_date} の統計（{display_area_name}）")
+            st.markdown(f"**📊 {selected_date} の統計（{display_area_name}）**")
+            # スマホで横に並びすぎないよう調整
             col1, col2, col3 = st.columns(3)
-            col1.metric("平均価格", f"{target_df['price'].mean():.2f} 円")
+            col1.metric("平均価格", f"{target_df['price'].mean():.2f}円")
+            
             max_row = target_df.loc[target_df['price'].idxmax()]
             min_row = target_df.loc[target_df['price'].idxmin()]
-            col2.metric("最高価格", f"{max_row['price']:.1f} 円", f"{max_row['エリア']} {max_row['時刻']}", delta_color="inverse")
-            col3.metric("最低価格", f"{min_row['price']:.1f} 円", f"{min_row['エリア']} {min_row['時刻']}")
+            
+            # デルタ表示にエリアと時刻を表示（重なり防止のため短縮表記）
+            col2.metric("最高価格", f"{max_row['price']:.1f}円", f"{max_row['エリア']} {max_row['時刻']}", delta_color="inverse")
+            col3.metric("最低価格", f"{min_row['price']:.1f}円", f"{min_row['エリア']} {min_row['時刻']}")
 
             # 2. 当日24時間グラフ
-            st.markdown(f'<div class="section-header">📈 {selected_date} の30分単位推移</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="section-header">📈 {selected_date} 推移</div>', unsafe_allow_html=True)
             fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True)
-            st.plotly_chart(update_chart_layout(fig_today, ""), use_container_width=True)
+            st.plotly_chart(update_chart_layout(fig_today, ""), use_container_width=True, config={'displayModeBar': False})
 
-            # 3. トレンド・多角分析タブ (任意期間を左端に統合)
-            st.markdown('<div class="section-header">📅 期間トレンド・多角分析</div>', unsafe_allow_html=True)
-            tabs = st.tabs(["🔍 指定期間", "7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
+            # 3. トレンド・多角分析タブ
+            st.markdown('<div class="section-header">📅 期間トレンド</div>', unsafe_allow_html=True)
+            tabs = st.tabs(["🔍 指定", "7日", "1月", "3月", "6月", "1年", "☀️ 季節", "🕒 時間"])
             
+            # 各タブのロジック（Version 9 踏襲）
             # --- タブ[0]: 指定期間 ---
             with tabs[0]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -124,8 +166,8 @@ try:
                             custom_daily = c_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                             fig_custom = px.line(custom_daily, x='date', y='price', color='エリア')
                         
-                        title = f"指定期間 ({s_d}～{e_d}) | 期間平均: {avg_price:.2f}円"
-                        st.plotly_chart(update_chart_layout(fig_custom, title), use_container_width=True)
+                        title = f"指定 ({s_d}～) | 平均: {avg_price:.2f}円"
+                        st.plotly_chart(update_chart_layout(fig_custom, title), use_container_width=True, config={'displayModeBar': False})
 
             # --- タブ[1-5]: 定型期間 ---
             periods = [7, 30, 90, 180, 365]
@@ -140,11 +182,10 @@ try:
                         period_avg = t_df['price'].mean()
                         d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                         fig = px.line(d_avg, x='date', y='price', color='エリア')
-                        st.plotly_chart(update_chart_layout(fig, f"直近{labels[i]}の日別平均 | 期間平均: {period_avg:.2f}円"), use_container_width=True)
+                        st.plotly_chart(update_chart_layout(fig, f"直近{labels[i]} | 平均: {period_avg:.2f}円"), use_container_width=True, config={'displayModeBar': False})
 
             # --- タブ[6]: 季節比較 ---
             with tabs[6]:
-                st.subheader("☀️❄️ エリア別・季節平均価格比較")
                 df['month'] = df['date'].dt.month
                 summer = df[df['month'].isin([7, 8, 9])]
                 winter = df[df['month'].isin([12, 1, 2])]
@@ -152,10 +193,10 @@ try:
                     s_avg = summer.groupby('エリア')['price'].mean().reset_index()
                     w_avg = winter.groupby('エリア')['price'].mean().reset_index()
                     fig_s = go.Figure(data=[
-                        go.Bar(name='夏(7-9月)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
-                        go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
+                        go.Bar(name='夏(7-9)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
+                        go.Bar(name='冬(12-2)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
                     ])
-                    st.plotly_chart(update_chart_layout(fig_s, "季節平均のエリア別比較"), use_container_width=True)
+                    st.plotly_chart(update_chart_layout(fig_s, "季節平均比較"), use_container_width=True)
 
             # --- タブ[7]: 時間帯分析 ---
             with tabs[7]:
@@ -166,12 +207,12 @@ try:
                     c_df = df[mask].copy()
                     if not c_df.empty:
                         c_df['hour'] = c_df['datetime'].dt.hour
-                        c_df['segment'] = c_df['hour'].apply(lambda h: '昼間(8-16)' if 8<=h<16 else ('夜間(16-24)' if 16<=h<24 else '夜中(0-8)'))
+                        c_df['segment'] = c_df['hour'].apply(lambda h: '昼(8-16)' if 8<=h<16 else ('夜(16-0)' if 16<=h or h<0 else '深(0-8)'))
                         t_res = c_df.groupby(['segment', 'エリア'])['price'].mean().reset_index()
                         fig_t = px.bar(t_res, x='エリア', y='price', color='segment', barmode='group')
-                        st.plotly_chart(update_chart_layout(fig_t, f"時間帯別平均 (期間: {s_d} ～ {e_d})"), use_container_width=True)
+                        st.plotly_chart(update_chart_layout(fig_t, "時間帯分析"), use_container_width=True)
         else:
-            st.warning(f"選択された日付 {selected_date} のデータが見つかりません。")
+            st.warning(f"{selected_date} のデータがありません。")
 
 except Exception as e:
-    st.error(f"システムエラー: {e}")
+    st.error(f"エラー: {e}")
