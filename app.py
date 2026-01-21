@@ -1,134 +1,176 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import pytz
+import glob
+import os
 
-# --- Project Zenith: JEPX統合分析 (Version 8) ---
+# --- Project Zenith: JEPX統合分析 (Version 8.2) ---
 # 【完了条件】Version番号を更新して提示すること。
 
-st.set_page_config(
-    page_title="Project Zenith JEPX Ver.8",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# 1. ページ設定
+st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.8.2", layout="wide")
 
-# タイムゾーン設定
-JST = pytz.timezone('Asia/Tokyo')
-
+# 2. データの読み込み (ファイル名自動検知機能付き)
 @st.cache_data(ttl=3600)
-def load_jepx_data():
-    """JEPXからデータを取得し、Ver.8仕様に整形する"""
-    # JEPXの最新年度データを取得（例として2025年度分を想定。運用に合わせてURL調整可）
-    url = "https://www.jepx.org/market/excel/spot_2025.csv" # 実際のURL構造に合わせて更新
+def load_data():
+    # dataフォルダ内の「spot_」で始まるCSVファイルをすべて取得
+    file_list = glob.glob("data/spot_*.csv")
+    
+    if not file_list:
+        return None, "dataフォルダ内に 'spot_*.csv' 形式のファイルが見つかりません。"
+
+    # 更新日時が最も新しいファイルを特定
+    latest_file = max(file_list, key=os.path.getmtime)
+    
     try:
-        # Shift-JISまたはCP932での読み込みが必要な場合が多い
-        df = pd.read_csv(url, encoding='shift_jis')
+        df = pd.read_csv(latest_file)
+        df['date'] = pd.to_datetime(df['date'])
         
-        # 日付と時刻を結合してdatetimeオブジェクトを作成
-        df['datetime'] = pd.to_datetime(df['年月日'] + ' ' + df['時刻'].str.split('-').str[0])
-        df.set_index('datetime', inplace=True)
+        # 時刻コードをHH:mm形式に変換
+        def code_to_time(code):
+            total_minutes = (int(code) - 1) * 30
+            return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
         
-        # タイムゾーンの付与と変換
-        if df.index.tz is None:
-            df.index = df.index.tz_localize('Asia/Tokyo')
-        else:
-            df.index = df.index.tz_convert('Asia/Tokyo')
+        if '時刻' not in df.columns:
+            df['時刻'] = df['time_code'].apply(code_to_time)
+        
+        # 日時を結合したdatetime列を作成
+        df['datetime'] = pd.to_datetime(df['date'].dt.strftime('%Y-%m-%d') + ' ' + df['時刻'])
+        
+        # エリア表記の統一
+        if 'area' in df.columns:
+            df = df.rename(columns={'area': 'エリア'})
             
-        # エリアリスト（価格変動要因の分析対象）
-        # 列名はJEPXのCSVヘッダー（システムプライス, 北海道, 東北, 東京...）に依存
-        return df
+        return df, f"読み込み完了: {os.path.basename(latest_file)}"
     except Exception as e:
-        st.error(f"データ取得エラー: {e}")
-        return pd.DataFrame()
+        return None, f"ファイル読み込みエラー: {e}"
 
-def main():
-    st.title("⚡ JEPX 統合分析 (Ver.8)")
-    st.caption(f"最終更新(JST): {datetime.now(JST).strftime('%Y-%m-%d %H:%M')}")
+# CSSデザイン (スマホ視認性向上)
+st.markdown("""
+    <style>
+    .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; margin-bottom: 0px; }
+    .today-date-banner { font-size: 14px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
+    .file-info { font-size: 12px; color: #2ecc71; margin-bottom: 20px; }
+    .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    df = load_jepx_data()
+try:
+    # データのロード
+    df, status_msg = load_data()
+    
+    # --- ヘッダー表示 ---
+    today_str = datetime.now().strftime('%Y/%m/%d')
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.8.2)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="today-date-banner">本日の日付: {today_str}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="file-info">📂 {status_msg}</div>', unsafe_allow_html=True)
 
-    if df.empty:
-        st.warning("データが読み込めませんでした。URLまたはネットワークを確認してください。")
-        return
-
-    # エリア列の特定（不要な列を除外）
-    exclude_cols = ['年月日', '時刻', 'month', 'hour', 'segment']
-    areas = [col for col in df.columns if col not in exclude_cols and df[col].dtype in ['float64', 'int64']]
-
-    tab1, tab2, tab3 = st.tabs(["基本価格・変動要因", "☀️❄️ 季節別比較", "🕒 時間帯別分析"])
-
-    # --- Tab 1: 基本機能 (Ver.7 継承) ---
-    with tab1:
-        st.header("エリア別価格推移")
-        selected_areas = st.multiselect("表示エリア選択", areas, default=["システムプライス", "東京"])
-        
-        fig_main = go.Figure()
-        for area in selected_areas:
-            fig_main.add_trace(go.Scatter(x=df.index, y=df[area], name=area, mode='lines'))
-        
-        fig_main.update_layout(title="スポット市場価格推移", yaxis_title="円/kWh", hovermode="x unified")
-        st.plotly_chart(fig_main, use_container_width=True)
-
-    # --- Tab 2: 季節別比較 (追加機能) ---
-    with tab2:
-        st.header("☀️❄️ 季節別平均価格 (夏:7-9月 vs 冬:12-2月)")
-        df['month'] = df.index.month
-        summer_df = df[df['month'].isin([7, 8, 9])]
-        winter_df = df[df['month'].isin([12, 1, 2])]
-        
-        if not summer_df.empty or not winter_df.empty:
-            summer_avg = summer_df[areas].mean()
-            winter_avg = winter_df[areas].mean()
-
-            fig_season = go.Figure(data=[
-                go.Bar(name='夏場 (7-9月)', x=areas, y=summer_avg, marker_color='#FF4B4B'),
-                go.Bar(name='冬場 (12-2月)', x=areas, y=winter_avg, marker_color='#0068C9')
-            ])
-            fig_season.update_layout(barmode='group', title="季節別エリア平均", yaxis_title="円/kWh")
-            st.plotly_chart(fig_season, use_container_width=True)
-        else:
-            st.info("比較に必要な期間のデータが不足しています。")
-
-    # --- Tab 3: 時間帯別分析 (追加機能) ---
-    with tab3:
-        st.header("🕒 時間帯別平均価格比較")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            s_date = st.date_input("開始日", df.index.min().date())
-        with col2:
-            e_date = st.date_input("終了日", df.index.max().date())
-
-        mask = (df.index.date >= s_date) & (df.index.date <= e_date)
-        f_df = df.loc[mask].copy()
-
-        if not f_df.empty:
-            def get_segment(hour):
-                if 8 <= hour < 16: return '昼間 (8-16時)'
-                elif 16 <= hour < 24: return '夜間 (16-24時)'
-                else: return '夜中 (0-8時)'
-
-            f_df['hour'] = f_df.index.hour
-            f_df['segment'] = f_df['hour'].apply(get_segment)
+    if df is None:
+        st.error(status_msg)
+    else:
+        # --- 3. サイドバーUI ---
+        st.sidebar.header("📊 表示設定")
+        if st.sidebar.button("🔄 データを再読み込み"):
+            st.cache_data.clear()
+            st.rerun()
             
-            s_avg = f_df.groupby('segment')[areas].mean().reset_index()
+        all_areas = sorted(df['エリア'].unique().tolist())
+        selected_area = st.sidebar.selectbox("表示エリアを選択", ["全エリア"] + all_areas, index=0)
+        
+        latest_date_in_csv = df['date'].dt.date.max()
+        selected_date = st.sidebar.date_input("分析基準日を選択", value=latest_date_in_csv)
 
-            fig_time = go.Figure()
-            colors = {'昼間 (8-16時)': '#FFA500', '夜間 (16-24時)': '#4B0082', '夜中 (0-8時)': '#2F4F4F'}
-            for seg in ['昼間 (8-16時)', '夜間 (16-24時)', '夜中 (0-8時)']:
-                seg_data = s_avg[s_avg['segment'] == seg]
-                if not seg_data.empty:
-                    fig_time.add_trace(go.Bar(
-                        name=seg, x=areas, y=seg_data[areas].values[0],
-                        marker_color=colors.get(seg)
-                    ))
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📅 任意期間の指定")
+        date_range = st.sidebar.date_input(
+            "期間を選択",
+            value=(latest_date_in_csv - timedelta(days=7), latest_date_in_csv),
+            min_value=df['date'].min().date(),
+            max_value=latest_date_in_csv
+        )
 
-            fig_time.update_layout(barmode='group', title=f"{s_date} ～ {e_date} の時間帯平均", yaxis_title="円/kWh")
-            st.plotly_chart(fig_time, use_container_width=True)
-        else:
-            st.warning("選択期間のデータがありません。")
+        # グラフ共通レイアウト設定
+        def update_chart_layout(fig, title_text):
+            fig.update_layout(
+                title=dict(text=title_text, font=dict(size=16)),
+                hovermode="x unified",
+                dragmode=False,
+                legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
+                margin=dict(l=10, r=10, t=50, b=80)
+            )
+            return fig
 
-if __name__ == "__main__":
-    main()
+        # 4. 統計指標表示
+        day_df = df[df['date'].dt.date == selected_date].copy()
+        if not day_df.empty:
+            target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
+            display_area_name = "全国" if selected_area == "全エリア" else selected_area
+            st.subheader(f"📊 {selected_date} の統計（{display_area_name}）")
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("平均価格", f"{target_df['price'].mean():.2f} 円")
+            max_row = target_df.loc[target_df['price'].idxmax()]
+            min_row = target_df.loc[target_df['price'].idxmin()]
+            col2.metric("最高価格", f"{max_row['price']:.1f} 円", f"{max_row['エリア']} {max_row['時刻']}", delta_color="inverse")
+            col3.metric("最低価格", f"{min_row['price']:.1f} 円", f"{min_row['エリア']} {min_row['時刻']}")
+
+            fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None)
+            fig_today = update_chart_layout(fig_today, f"{selected_date} 詳細推移")
+            st.plotly_chart(fig_today, use_container_width=True, config={'displayModeBar': False})
+
+            # --- タブ形式のトレンド分析 ---
+            st.markdown('<div class="section-header">📅 多角トレンド分析（エリア別比較）</div>', unsafe_allow_html=True)
+            tabs = st.tabs(["7日間", "1ヶ月", "3ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
+            
+            periods = [7, 30, 90, 365]
+            for i in range(4):
+                with tabs[i]:
+                    days = periods[i]
+                    s_date = pd.to_datetime(selected_date) - timedelta(days=days)
+                    t_mask = (df['date'] >= s_date) & (df['date'] <= pd.to_datetime(selected_date))
+                    if selected_area != "全エリア": t_mask &= (df['エリア'] == selected_area)
+                    t_df = df[t_mask].copy()
+                    if not t_df.empty:
+                        if days == 7: fig = px.line(t_df, x='datetime', y='price', color='エリア')
+                        else:
+                            d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
+                            fig = px.line(d_avg, x='date', y='price', color='エリア')
+                        st.plotly_chart(update_chart_layout(fig, f"直近{days}日の推移"), use_container_width=True)
+
+            # --- 季節比較 ---
+            with tabs[4]:
+                st.subheader("☀️❄️ 夏冬の平均価格比較")
+                df['month'] = df['date'].dt.month
+                summer = df[df['month'].isin([7, 8, 9])]
+                winter = df[df['month'].isin([12, 1, 2])]
+                if not summer.empty and not winter.empty:
+                    s_avg = summer.groupby('エリア')['price'].mean().reset_index()
+                    w_avg = winter.groupby('エリア')['price'].mean().reset_index()
+                    fig_s = go.Figure(data=[
+                        go.Bar(name='夏(7-9月)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
+                        go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
+                    ])
+                    st.plotly_chart(update_chart_layout(fig_s, "エリア別・季節平均比較"), use_container_width=True)
+
+            # --- 時間帯分析 ---
+            with tabs[5]:
+                if isinstance(date_range, tuple) and len(date_range) == 2:
+                    s_d, e_d = date_range
+                    mask = (df['date'].dt.date >= s_d) & (df['date'].dt.date <= e_d)
+                    if selected_area != "全エリア": mask &= (df['エリア'] == selected_area)
+                    c_df = df[mask].copy()
+                    if not c_df.empty:
+                        c_df['hour'] = c_df['datetime'].dt.hour
+                        c_df['segment'] = c_df['hour'].apply(lambda h: '昼間(8-16)' if 8<=h<16 else ('夜間(16-24)' if 16<=h<24 else '夜中(0-8)'))
+                        t_res = c_df.groupby(['segment', 'エリア'])['price'].mean().reset_index()
+                        fig_t = go.Figure()
+                        colors = {'昼間(8-16)': '#FFA500', '夜間(16-24)': '#4B0082', '夜中(0-8)': '#2F4F4F'}
+                        for seg in ['昼間(8-16)', '夜間(16-24)', '夜中(0-8)']:
+                            seg_data = t_res[t_res['segment'] == seg]
+                            fig_t.add_trace(go.Bar(x=seg_data['エリア'], y=seg_data['price'], name=seg, marker_color=colors[seg]))
+                        st.plotly_chart(update_chart_layout(fig_t, "時間帯別平均"), use_container_width=True)
+
+except Exception as e:
+    st.error(f"システムエラー: {e}")
