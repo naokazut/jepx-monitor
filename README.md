@@ -1,4 +1,5 @@
 # Project Zenith - JEPX統合分析システム (Version 9)
+- Empowering Power Market Data Analysis -
 
 JEPX（日本卸電力取引所）のスポット市場価格を自動取得し、多角的な分析を提供するフルスタック・ダッシュボードです。
 
@@ -46,6 +47,3 @@ streamlit run app.py
 ## 自動更新スケジュール
 実行時間: 毎日 日本時間 12:30（UTC 3:30）
 動作: fetch_data.py 実行 → data/spot_2025.csv 更新 → Git Commit & Push
-
-
-Project Zenith - Empowering Power Market Data Analysis.
