@@ -7,8 +7,8 @@ import glob
 import os
 import pytz
 
-# --- Project Zenith: JEPX統合分析 (Version 9) ---
-# 【修正】季節比較タブのタイトルサイズを他と統一（18px）。全タブの視認性を共通化。
+# --- Project Zenith: JEPX統合分析 (Version 9 確定正本) ---
+# 【修正】スマホでのツールチップ（吹き出し）常駐問題を改善。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -20,7 +20,7 @@ st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.9", layout="wide"
 def load_data():
     file_list = glob.glob("data/spot_*.csv")
     if not file_list:
-        return None, "dataフォルダ内にファイルが見つかりません。"
+        return None, "dataフォルダ内にファイルが見見つかりません。"
     latest_file = max(file_list, key=os.path.getmtime)
     try:
         df = pd.read_csv(latest_file)
@@ -37,7 +37,7 @@ def load_data():
     except Exception as e:
         return None, f"エラー: {e}"
 
-# --- CSS: UIスタイルの統一 ---
+# --- CSS: 統一デザイン定義 ---
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; }
@@ -45,7 +45,6 @@ st.markdown("""
     .stMetric { background-color: #f8f9fb; padding: 10px; border-radius: 10px; border: 1px solid #eef2f6; }
     .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
     
-    /* 全タブ共通サブタイトル設定 */
     .sub-title { 
         font-size: 18px !important; 
         font-weight: bold !important; 
@@ -53,6 +52,11 @@ st.markdown("""
         margin-bottom: 15px !important; 
         display: block;
         color: #31333F;
+    }
+
+    /* スマホでタップした際の青いハイライト（フォーカス）を抑制 */
+    .js-plotly-plot .plotly .cursor-crosshair {
+        cursor: default !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -67,7 +71,6 @@ try:
     if df is not None:
         latest_date_in_csv = df['date'].dt.date.max()
         
-        # サイドバー設定
         st.sidebar.header("📊 表示設定")
         if st.sidebar.button("🔄 データを再読み込み"):
             st.cache_data.clear()
@@ -89,10 +92,20 @@ try:
         def update_chart_layout(fig):
             fig.update_layout(
                 hovermode="x unified",
+                # ホバーの追従性を高め、スマホでの「離脱」を検知しやすく設定
+                hoverlabel=dict(bgcolor="rgba(255,255,255,0.9)", font_size=12),
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
                 margin=dict(l=10, r=10, t=20, b=80)
             )
             return fig
+
+        # グラフ共通設定: スマホでのタッチ操作を最適化
+        CHART_CONFIG = {
+            'displayModeBar': False,
+            'scrollZoom': False, # 意図しないズームを防ぐ
+            'doubleClick': 'reset',
+            'displaylogo': False
+        }
 
         # 1. 統計メトリック表示
         day_df = df[df['date'].dt.date == selected_date].copy()
@@ -111,13 +124,12 @@ try:
             # 2. 当日24時間グラフ
             st.markdown(f'<div class="section-header">📈 {selected_date} の30分単位推移</div>', unsafe_allow_html=True)
             fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True)
-            st.plotly_chart(update_chart_layout(fig_today), use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(update_chart_layout(fig_today), use_container_width=True, config=CHART_CONFIG)
 
             # 3. トレンド・多角分析タブ
             st.markdown('<div class="section-header">📅 期間トレンド・多角分析</div>', unsafe_allow_html=True)
             tabs = st.tabs(["🔍 指定期間", "7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
             
-            # --- 各タブの描画（タイトルサイズを統一） ---
             with tabs[0]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
                     s_d, e_d = date_range
@@ -130,7 +142,7 @@ try:
                         is_short = (e_d - s_d).days <= 7
                         fig_custom = px.line(c_df if is_short else c_df.groupby(['date', 'エリア'])['price'].mean().reset_index(), 
                                              x='datetime' if is_short else 'date', y='price', color='エリア')
-                        st.plotly_chart(update_chart_layout(fig_custom), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(update_chart_layout(fig_custom), use_container_width=True, config=CHART_CONFIG)
 
             periods = [7, 30, 90, 180, 365]
             labels = ["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年"]
@@ -144,10 +156,9 @@ try:
                         st.markdown(f'<div class="sub-title">📅 直近{labels[i]}の日別平均 | 期間平均: {t_df["price"].mean():.2f}円</div>', unsafe_allow_html=True)
                         d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                         fig = px.line(d_avg, x='date', y='price', color='エリア')
-                        st.plotly_chart(update_chart_layout(fig), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(update_chart_layout(fig), use_container_width=True, config=CHART_CONFIG)
 
             with tabs[6]:
-                # 【修正箇所】他とサイズを合わせて .sub-title クラスを適用
                 st.markdown('<div class="sub-title">☀️❄️ エリア別・季節平均価格比較</div>', unsafe_allow_html=True)
                 df['month'] = df['date'].dt.month
                 summer = df[df['month'].isin([7, 8, 9])]
@@ -159,7 +170,7 @@ try:
                         go.Bar(name='夏(7-9月)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
                         go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
                     ])
-                    st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
 
             with tabs[7]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
@@ -173,7 +184,7 @@ try:
                         c_df['segment'] = c_df['hour'].apply(lambda h: '昼間(8-16)' if 8<=h<16 else ('夜間(16-24)' if 16<=h<24 else '夜中(0-8)'))
                         t_res = c_df.groupby(['segment', 'エリア'])['price'].mean().reset_index()
                         fig_t = px.bar(t_res, x='エリア', y='price', color='segment', barmode='group')
-                        st.plotly_chart(update_chart_layout(fig_t), use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(update_chart_layout(fig_t), use_container_width=True, config=CHART_CONFIG)
         else:
             st.warning(f"選択された日付 {selected_date} のデータが見つかりません。")
 
