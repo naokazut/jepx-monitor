@@ -7,7 +7,7 @@ import glob
 import os
 import pytz
 
-# --- Project Zenith: JEPX統合分析 (Version 9.2 統合修正版) ---
+# --- Project Zenith: JEPX統合分析 (Version 9) ---
 # 【修正】先祖帰りを解消：統計メトリック、季節比較タブを完全復活。
 
 # 日本タイムゾーンの設定
