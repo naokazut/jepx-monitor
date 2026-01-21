@@ -8,7 +8,7 @@ import os
 import pytz
 
 # --- Project Zenith: JEPX統合分析 (Version 9) ---
-# 【修正】メトリックラベルを一段下げてメニューとの干渉を防止。視認性を向上。
+# 【修正】グラフ描画位置をStreamlitメニューより下にずらし、干渉を完全に解消。
 
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -37,22 +37,27 @@ def load_data():
     except Exception as e:
         return None, f"エラー: {e}"
 
-# CSS (Version 9 のデザインを維持しつつ、ラベル位置のみ調整)
+# CSS: 表示位置の強制調整
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; }
     .today-date-banner { font-size: 14px; color: #555; margin-bottom: 10px; border-left: 5px solid #3498DB; padding-left: 10px; background: #f9f9f9; padding: 5px 10px; }
     
-    /* Metric表示の修正: ラベルを一段下げて被りを防ぐ */
+    /* 統計カードのメニュー干渉防止 */
     [data-testid="stMetric"] { 
         background-color: #f8f9fb; 
-        padding: 15px 10px 10px 10px !important; /* 上部に余白を確保 */
+        padding: 25px 10px 10px 10px !important; /* 上部に大きな余白 */
         border-radius: 10px; 
         border: 1px solid #eef2f6; 
     }
     [data-testid="stMetricLabel"] {
-        margin-top: 10px !important; /* ラベルを一段下げる */
+        margin-top: 5px !important;
         display: block !important;
+    }
+
+    /* グラフ本体とStreamlitメニュー（三点リーダー）の重なりを解消 */
+    .stPlotlyChart {
+        margin-top: 45px !important; /* グラフ全体を下にずらす */
     }
 
     .section-header { margin-top: 25px; padding: 8px; background: #f0f2f6; border-radius: 5px; font-weight: bold; font-size: 15px; }
@@ -90,10 +95,15 @@ try:
 
         def update_chart_layout(fig, title_text):
             fig.update_layout(
-                title=dict(text=title_text, font=dict(size=15)),
+                title=dict(
+                    text=title_text, 
+                    font=dict(size=15),
+                    y=0.95, # グラフ内でもタイトルを少し下げる
+                    x=0.05
+                ),
                 hovermode="x unified",
                 legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
-                margin=dict(l=10, r=10, t=50, b=80)
+                margin=dict(l=10, r=10, t=60, b=80) # トップマージンを拡張
             )
             return fig
 
@@ -120,7 +130,6 @@ try:
             st.markdown('<div class="section-header">📅 期間トレンド・多角分析</div>', unsafe_allow_html=True)
             tabs = st.tabs(["🔍 指定期間", "7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年", "☀️ 季節比較", "🕒 時間帯分析"])
             
-            # --- タブ[0]: 指定期間 ---
             with tabs[0]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
                     s_d, e_d = date_range
@@ -139,7 +148,7 @@ try:
                         title = f"指定期間 ({s_d}～{e_d}) | 期間平均: {avg_price:.2f}円"
                         st.plotly_chart(update_chart_layout(fig_custom, title), use_container_width=True)
 
-            # --- タブ[1-5]: 定型期間 ---
+            # タブ[1-5]: 定型期間
             periods = [7, 30, 90, 180, 365]
             labels = ["7日間", "1ヶ月", "3ヶ月", "6ヶ月", "1年"]
             for i, days in enumerate(periods):
@@ -154,7 +163,7 @@ try:
                         fig = px.line(d_avg, x='date', y='price', color='エリア')
                         st.plotly_chart(update_chart_layout(fig, f"直近{labels[i]}の日別平均 | 期間平均: {period_avg:.2f}円"), use_container_width=True)
 
-            # --- タブ[6]: 季節比較 ---
+            # タブ[6]: 季節比較
             with tabs[6]:
                 st.subheader("☀️❄️ エリア別・季節平均価格比較")
                 df['month'] = df['date'].dt.month
@@ -169,7 +178,7 @@ try:
                     ])
                     st.plotly_chart(update_chart_layout(fig_s, "季節平均のエリア別比較"), use_container_width=True)
 
-            # --- タブ[7]: 時間帯分析 ---
+            # タブ[7]: 時間帯分析
             with tabs[7]:
                 if isinstance(date_range, tuple) and len(date_range) == 2:
                     s_d, e_d = date_range
