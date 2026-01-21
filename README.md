@@ -43,7 +43,9 @@ pip install -r requirements.txt
 streamlit run app.py
 
 
-自動更新スケジュール
+### 自動更新スケジュール
 実行時間: 毎日 日本時間 12:30（UTC 3:30）
-
 動作: fetch_data.py 実行 → data/spot_2025.csv 更新 → Git Commit & Push
+
+
+Project Zenith - Empowering Power Market Data Analysis.
