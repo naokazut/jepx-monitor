@@ -4,7 +4,7 @@ import sys
 def test_connection():
     # ターゲット：2010年度スポット価格CSV
     # JEPXは歴史的にhttpが標準のため、httpで指定
-    url = "http://www.jepx.org/market/excel/spot_2010.csv"
+    url = "http://www.jepx.org/market/excel/spot_2025.csv"
     
     print(f"--- JEPX Connection Test ---")
     print(f"Target: {url}")
