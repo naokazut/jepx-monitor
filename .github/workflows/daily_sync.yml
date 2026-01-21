@@ -22,8 +22,9 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install requests
-
+        run: |
+          pip install requests pandas
+          
       - name: Run Update Script
         run: python update_jepx.py
 
