@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.19.0) ---
+# --- Project Zenith: Production Mail System (Ver.19.1) ---
 
 def code_to_time(code):
     """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
@@ -18,17 +18,19 @@ def code_to_time(code):
 def send_daily_reports():
     JST = pytz.timezone('Asia/Tokyo')
     target_date = (datetime.now(JST) + timedelta(days=1)).date()
-    
+    # ★修正2: 文字化け防止のため strftime で明示フォーマット
+    date_str = target_date.strftime("%Y-%m-%d")
+
     areas = ["東京", "東北", "関西", "中国", "九州"]
     target_emails = ["tsukada@inbox.co.jp", "naokazut@gmail.com"]
-    
+
     try:
         df = pd.read_csv("data/spot_2026.csv")
         df['date'] = pd.to_datetime(df['date']).dt.date
         target_df = df[df['date'] == target_date].copy()
-        
+
         if target_df.empty:
-            print(f"{target_date}のデータがありません。")
+            print(f"{date_str}のデータがありません。")
             return
     except Exception as e:
         print(f"データ読み込みエラー: {e}")
@@ -61,9 +63,9 @@ def send_daily_reports():
 
         fig.add_trace(go.Scatter(x=[code_to_time(min_row['time_code'])], y=[min_row['price']], mode='markers', marker=dict(color='green', size=12), showlegend=False))
 
-        # タイトルから曜日（括弧部分）を完全に削除して文字化け回避
+        # ★修正2: date_str を使用（文字化けなし）
         fig.update_layout(
-            title=f"JEPX Price Trend: {target_date} {area_name}",
+            title=f"JEPX Price Trend: {date_str} {area_name}",
             xaxis_title="Time", yaxis_title="Price (JPY/kWh)",
             xaxis=dict(tickangle=-90, tickmode='linear', dtick=1),
             yaxis=dict(dtick=5), template="plotly_white", showlegend=False,
@@ -73,17 +75,30 @@ def send_daily_reports():
         img_path = f"temp_{area_name}.png"
         fig.write_image(img_path, engine="kaleido", width=1200, height=600)
 
-        # --- メール作成 (Outlook対応強化版) ---
-        msg = MIMEMultipart('related')
-        msg['Subject'] = f"【{target_date} {area_name}エリアJEPX予報レポート】"
+        # ★修正1: Outlook対応 - multipart/alternative → multipart/related の入れ子構造
+        msg = MIMEMultipart('mixed')
+        msg['Subject'] = f"【{date_str} {area_name}エリアJEPX予報レポート】"
         msg['From'] = mail_user
         msg['To'] = ", ".join(target_emails)
 
-        # 本文文言の修正
+        # HTMLとインライン画像をまとめる related パート
+        msg_related = MIMEMultipart('related')
+
+        # alternative パートで text/plain + text/html を包む
+        msg_alternative = MIMEMultipart('alternative')
+
+        plain_text = (
+            f"{date_str} の {area_name}エリアの市場価格推移です。\n"
+            f"最高価格：{max_row['price']:.2f}円@{code_to_time(max_row['time_code'])}\n"
+            f"最低価格：{min_row['price']:.2f}円@{code_to_time(min_row['time_code'])}\n"
+            f"平均単価：{avg_price:.2f}円\n"
+        )
+        msg_alternative.attach(MIMEText(plain_text, 'plain', 'utf-8'))
+
         html = f"""
         <html>
           <body style="font-family: sans-serif; color: #333; max-width: 800px;">
-            <p>{target_date} の {area_name}エリアの市場価格推移です。</p>
+            <p>{date_str} の {area_name}エリアの市場価格推移です。</p>
             <p style="line-height: 1.6;">
               最高価格：{max_row['price']:.2f}円@{code_to_time(max_row['time_code'])}<br>
               最低価格：{min_row['price']:.2f}円@{code_to_time(min_row['time_code'])}<br>
@@ -99,15 +114,20 @@ def send_daily_reports():
           </body>
         </html>
         """
-        msg.attach(MIMEText(html, 'html'))
+        msg_alternative.attach(MIMEText(html, 'html', 'utf-8'))
 
-        # 画像添付 (Outlook等のインライン表示の互換性を高める設定)
+        # related に alternative を追加
+        msg_related.attach(msg_alternative)
+
+        # ★修正1: インライン画像を related に添付（mixed ではなく related へ）
         with open(img_path, 'rb') as f:
-            img = MIMEImage(f.read())
+            img = MIMEImage(f.read(), _subtype='png')
             img.add_header('Content-ID', f'<chart_{area_name}>')
-            # 添付ファイルとして表示させないための設定
-            img.add_header('Content-Disposition', 'inline', filename=img_path)
-            msg.attach(img)
+            img.add_header('Content-Disposition', 'inline', filename=f'chart_{area_name}.png')
+            msg_related.attach(img)
+
+        # mixed に related を追加
+        msg.attach(msg_related)
 
         # 送信
         try:
@@ -118,7 +138,7 @@ def send_daily_reports():
             print(f"成功: {area_name}")
         except Exception as e:
             print(f"失敗: {area_name} - {e}")
-        
+
         if os.path.exists(img_path): os.remove(img_path)
 
 if __name__ == "__main__":
