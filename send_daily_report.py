@@ -8,17 +8,24 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.19.1) ---
+# --- Project Zenith: Production Mail System (Ver.19.2) ---
 
 def code_to_time(code):
-    """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
     m = (int(code) - 1) * 30
     return f"{m // 60:02d}:{m % 60:02d}"
+
+# ★修正: Content-IDをASCIIのみにするためのエリア名マッピング
+AREA_ID_MAP = {
+    "東京": "tokyo",
+    "東北": "tohoku",
+    "関西": "kansai",
+    "中国": "chugoku",
+    "九州": "kyushu",
+}
 
 def send_daily_reports():
     JST = pytz.timezone('Asia/Tokyo')
     target_date = (datetime.now(JST) + timedelta(days=1)).date()
-    # ★修正2: 文字化け防止のため strftime で明示フォーマット
     date_str = target_date.strftime("%Y-%m-%d")
 
     areas = ["東京", "東北", "関西", "中国", "九州"]
@@ -41,6 +48,7 @@ def send_daily_reports():
     smtp_server = os.environ.get('SMTP_SERVER')
 
     for area_name in areas:
+        area_id = AREA_ID_MAP[area_name]  # ★ASCII IDを使用
         area_df = target_df[target_df['area'] == area_name].sort_values('time_code').copy()
         if area_df.empty: continue
 
@@ -51,40 +59,58 @@ def send_daily_reports():
 
         # --- グラフ生成 ---
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=area_df['time_str'], y=area_df['price'], mode='lines', line=dict(color='#1f77b4', width=2)))
-        fig.add_hline(y=avg_price, line_dash="dash", line_color="orange", annotation_text=f"AVG: {avg_price:.2f}", annotation_position="bottom right")
+        fig.add_trace(go.Scatter(
+            x=area_df['time_str'], y=area_df['price'],
+            mode='lines', line=dict(color='#1f77b4', width=2)
+        ))
+        fig.add_hline(
+            y=avg_price, line_dash="dash", line_color="orange",
+            annotation_text=f"AVG: {avg_price:.2f}",
+            annotation_position="bottom right"
+        )
 
-        # 08:00〜18:00のピーク判定
-        peak_df = area_df[(area_df['time_code'] >= 17) & (area_df['time_code'] <= 36) & (area_df['price'] > avg_price)]
+        peak_df = area_df[
+            (area_df['time_code'] >= 17) &
+            (area_df['time_code'] <= 36) &
+            (area_df['price'] > avg_price)
+        ]
         for _, row in peak_df.iterrows():
             t_str = row['time_str']
-            fig.add_trace(go.Scatter(x=[t_str], y=[row['price']], mode='markers', marker=dict(color='red', size=8), showlegend=False))
+            fig.add_trace(go.Scatter(
+                x=[t_str], y=[row['price']], mode='markers',
+                marker=dict(color='red', size=8), showlegend=False
+            ))
             fig.add_vline(x=t_str, line_width=1, line_dash="dot", line_color="red", opacity=0.3)
 
-        fig.add_trace(go.Scatter(x=[code_to_time(min_row['time_code'])], y=[min_row['price']], mode='markers', marker=dict(color='green', size=12), showlegend=False))
+        fig.add_trace(go.Scatter(
+            x=[code_to_time(min_row['time_code'])], y=[min_row['price']],
+            mode='markers', marker=dict(color='green', size=12), showlegend=False
+        ))
 
-        # ★修正2: date_str を使用（文字化けなし）
+        # ★修正: タイトルの日本語エリア名を英語に、フォントを日本語対応に
         fig.update_layout(
-            title=f"JEPX Price Trend: {date_str} {area_name}",
+            title=dict(
+                text=f"JEPX Price Trend: {date_str} [{area_id.upper()}]",
+                font=dict(family="Arial, sans-serif", size=16)
+            ),
             xaxis_title="Time", yaxis_title="Price (JPY/kWh)",
             xaxis=dict(tickangle=-90, tickmode='linear', dtick=1),
             yaxis=dict(dtick=5), template="plotly_white", showlegend=False,
-            margin=dict(l=50, r=50, t=80, b=100)
+            margin=dict(l=50, r=50, t=80, b=100),
+            font=dict(family="Arial, sans-serif")  # ★全体フォントもASCIIフォントに統一
         )
 
-        img_path = f"temp_{area_name}.png"
+        img_path = f"temp_{area_id}.png"
         fig.write_image(img_path, engine="kaleido", width=1200, height=600)
 
-        # ★修正1: Outlook対応 - multipart/alternative → multipart/related の入れ子構造
-        msg = MIMEMultipart('mixed')
+        # ★修正: Outlook完全対応MIME構造
+        # mixed は不要。related のみでOutlookの添付扱いを回避
+        msg = MIMEMultipart('related')
         msg['Subject'] = f"【{date_str} {area_name}エリアJEPX予報レポート】"
         msg['From'] = mail_user
         msg['To'] = ", ".join(target_emails)
 
-        # HTMLとインライン画像をまとめる related パート
-        msg_related = MIMEMultipart('related')
-
-        # alternative パートで text/plain + text/html を包む
+        # alternative で plain + html を包む
         msg_alternative = MIMEMultipart('alternative')
 
         plain_text = (
@@ -109,27 +135,23 @@ def send_daily_reports():
               </b>
             </p>
             <div style="margin-top: 20px;">
-              <img src="cid:chart_{area_name}" alt="Price Chart" style="width: 100%; max-width: 800px; height: auto;">
+              <img src="cid:{area_id}_chart" alt="Price Chart" style="width:100%; max-width:800px; height:auto;">
             </div>
           </body>
         </html>
         """
         msg_alternative.attach(MIMEText(html, 'html', 'utf-8'))
 
-        # related に alternative を追加
-        msg_related.attach(msg_alternative)
+        # related に alternative を先に追加
+        msg.attach(msg_alternative)
 
-        # ★修正1: インライン画像を related に添付（mixed ではなく related へ）
+        # ★修正: CIDをASCIIのみに統一（日本語CIDはOutlookで壊れる）
         with open(img_path, 'rb') as f:
             img = MIMEImage(f.read(), _subtype='png')
-            img.add_header('Content-ID', f'<chart_{area_name}>')
-            img.add_header('Content-Disposition', 'inline', filename=f'chart_{area_name}.png')
-            msg_related.attach(img)
+            img.add_header('Content-ID', f'<{area_id}_chart>')
+            img.add_header('Content-Disposition', 'inline', filename=f'{area_id}_chart.png')
+            msg.attach(img)
 
-        # mixed に related を追加
-        msg.attach(msg_related)
-
-        # 送信
         try:
             with smtplib.SMTP(smtp_server, 587) as server:
                 server.starttls()
