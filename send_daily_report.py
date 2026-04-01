@@ -26,8 +26,8 @@ AREA_ID_MAP = {
 
 def send_daily_reports():
     JST = pytz.timezone('Asia/Tokyo')
-#   target_date = (datetime.now(JST) + timedelta(days=1)).date()
-    target_date = datetime.now(JST).date()
+    target_date = (datetime.now(JST) + timedelta(days=1)).date()
+#   target_date = datetime.now(JST).date()
     date_str = target_date.strftime("%Y-%m-%d")
 
     areas = ["東京", "東北", "関西", "中国", "九州"]
