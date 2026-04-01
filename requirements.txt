@@ -4,3 +4,5 @@ numpy
 plotly>=5.18.0
 requests
 pytz
+kaleido==0.2.1
+plotly>=5.0.0
