@@ -135,7 +135,7 @@ def send_daily_reports():
                 for _, row in peak_df.iterrows()
             )
             + "\n※グラフ上の赤丸は、平日の午前8時から午後6時までの間で、その日の平均単価より価格が高い時間帯を示しています。"
-            "そのため赤丸時間帯に電気使用量を抑えられる場合は、極力抑えコスト抑制にご尽力ください！\n"
+            "\nそのため赤丸時間帯に電気使用量を抑えられる場合は、極力抑えコスト抑制にご尽力ください！\n"
         )
         msg_alternative.attach(MIMEText(plain_text, 'plain', 'utf-8'))
 
