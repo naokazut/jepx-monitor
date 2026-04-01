@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.14.0) ---
+# --- Project Zenith: Production Mail System (Ver.15.0) ---
 
 def code_to_time(code):
     """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
@@ -47,13 +47,12 @@ def send_daily_reports():
         max_row = area_df.loc[area_df['price'].idxmax()]
         min_row = area_df.loc[area_df['price'].idxmin()]
 
-        # X軸のラベル作成 (00:00, 00:30, ..., 23:30)
+        # X軸ラベルの作成
         time_labels = [code_to_time(c) for c in area_df['time_code']]
 
         # --- グラフ生成 ---
         fig = go.Figure()
 
-        # メイン曲線
         fig.add_trace(go.Scatter(
             x=time_labels, y=area_df['price'],
             mode='lines', line=dict(color='#1f77b4', width=2)
@@ -61,7 +60,7 @@ def send_daily_reports():
 
         # 平均価格線
         fig.add_hline(y=avg_price, line_dash="dash", line_color="orange", 
-                      annotation_text=f"平均価格: {avg_price:.2f}", 
+                      annotation_text=f"Average: {avg_price:.2f}", 
                       annotation_position="bottom right")
 
         # 最高値（赤丸）
@@ -76,19 +75,23 @@ def send_daily_reports():
             mode='markers', marker=dict(color='green', size=12)
         ))
 
-        # 軸とレイアウトの設定
+        # レイアウト設定（nbinsxを削除し、日本語ラベルを一旦英語にして文字化け回避）
         fig.update_layout(
-            title=f"JEPX市場価格推移 {target_date} ({area_name})",
-            xaxis_title="時間",
-            yaxis_title="スポット価格",
-            xaxis=dict(tickangle=-45, nbinsx=48),
-            yaxis=dict(dtick=5), # 5円間隔
+            title=f"JEPX Price Trend: {target_date} ({area_name})",
+            xaxis_title="Time",
+            yaxis_title="Spot Price (JPY/kWh)",
+            xaxis=dict(
+                tickangle=-45,
+                tickmode='linear',
+                dtick=4 # 2時間おきに表示して重なりを防ぐ
+            ),
+            yaxis=dict(dtick=5),
             template="plotly_white",
-            showlegend=False,
-            font=dict(size=12)
+            showlegend=False
         )
 
         img_path = f"temp_{area_name}.png"
+        # kaleidoを使用して画像保存
         fig.write_image(img_path, engine="kaleido")
 
         # --- メール作成 ---
@@ -100,7 +103,7 @@ def send_daily_reports():
         # 本文（HTML埋め込み）
         html = f"""
         <html>
-          <body style="font-family: 'MS PGothic', sans-serif;">
+          <body style="font-family: sans-serif;">
             <p>{target_date} の {area_name}エリアの市場価格推移です。</p>
             <p style="line-height: 1.6;">
               最高価格：{max_row['price']:.2f}円@{code_to_time(max_row['time_code'])}<br>
@@ -108,13 +111,13 @@ def send_daily_reports():
               平均単価：{avg_price:.2f}円
             </p>
             <img src="cid:chart_{area_name}" style="max-width: 100%; height: auto;">
-            <p style="color: #666; font-size: 0.8em;">※赤丸：最高値 / 緑丸：最安値 / 橙線：平均単価</p>
+            <p style="color: #666; font-size: 0.8em;">※グラフ内 赤丸：最高値 / 緑丸：最安値 / 橙線：平均価格</p>
           </body>
         </html>
         """
         msg.attach(MIMEText(html, 'html'))
 
-        # 画像をインライン添付
+        # 画像をインラインとして添付
         with open(img_path, 'rb') as f:
             img = MIMEImage(f.read())
             img.add_header('Content-ID', f'<chart_{area_name}>')
