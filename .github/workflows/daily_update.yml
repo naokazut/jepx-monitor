@@ -2,16 +2,18 @@ name: JEPX Daily Update and Report
 
 on:
   schedule:
-    # 毎日 日本時間 13:00 (UTC 4:00) 実行
+    # 毎日 日本時間 13:30 (UTC 4:30) 実行
+    # 月〜金(1-5)に限定
     - cron: '30 4 * * 1-5'
-  workflow_dispatch: # 手動実行ボタン用
+  workflow_dispatch: # 手動実行用ボタン
 
 jobs:
   update-and-mail:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -21,21 +23,35 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          # kaleidoの動作に必要なシステムライブラリ
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
 
       - name: Fetch Latest Data
-        run: python fetch_data.py
+        # データ取得に失敗した場合、5分間隔で最大3回リトライする設定
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 5
+          retry_wait_seconds: 300
+          command: python fetch_data.py
 
       - name: Send Daily Reports
         env:
           MAIL_ADDRESS: ${{ secrets.MAIL_ADDRESS }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        run: python send_daily_report.py
+        # メール送信ステップ (jepx_report_v19_3.pyを実行)
+        # 失敗した場合はリトライせず、エラーとして停止させる
+        continue-on-error: false
+        run: python jepx_report_v19_3.py
 
       - name: Commit and Push
+        # メール送信まで成功した場合のみ、取得したデータをリポジトリに保存
+        if: success()
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/*.csv
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update JEPX data and send reports [skip ci]"
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update JEPX data [skip ci]"
           git push
