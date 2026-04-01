@@ -3,7 +3,7 @@ name: JEPX Daily Update and Report
 on:
   schedule:
     # 毎日 日本時間 13:00 (UTC 4:00) 実行
-    - cron: '0 4 * * 1-5'
+    - cron: '30 4 * * 1-5'
   workflow_dispatch: # 手動実行ボタン用
 
 jobs:
