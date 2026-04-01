@@ -2,9 +2,9 @@ name: JEPX Daily Update and Report
 
 on:
   schedule:
-    # 毎日 日本時間 13:00 (UTC 4:00) に実行
-    - cron: '0 4 * * 1-5' # 月〜金の平日に設定
-  workflow_dispatch: # 手動実行も可能に残す
+    # 毎日 日本時間 13:00 (UTC 4:00) 実行
+    - cron: '0 4 * * 1-5'
+  workflow_dispatch: # 手動実行ボタン用
 
 jobs:
   update-and-mail:
@@ -32,10 +32,10 @@ jobs:
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
         run: python send_daily_report.py
 
-      - name: Commit and Push if data updated
+      - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/*.csv
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update JEPX data [skip ci]"
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update JEPX data and send reports [skip ci]"
           git push
