@@ -7,15 +7,15 @@ import glob
 import os
 import pytz
 
-# --- Project Zenith: JEPX統合分析 (Version 11) ---
-# 【修正】全CSVファイルを結合して読み込む仕様に変更。2020年からの全期間と最新データを統合。
+# --- Project Zenith: JEPX統合分析 (Version 12) ---
+# 【新機能】指定期間グラフにエリア別の平均値線（水平破線）とアノテーションを追加。
 
 JST = pytz.timezone('Asia/Tokyo')
 
 # 1. ページ設定
-st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.11", layout="wide")
+st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.12", layout="wide")
 
-# 2. データの読み込み関数（全ファイル結合型）
+# 2. データの読み込み関数
 @st.cache_data(ttl=3600)
 def load_data():
     file_list = glob.glob("data/spot_*.csv")
@@ -34,10 +34,10 @@ def load_data():
         return None, "読み込み可能なデータがありません。"
 
     try:
-        # 全CSVを統合し、重複を削除
         df = pd.concat(all_data, ignore_index=True)
         df['date'] = pd.to_datetime(df['date'])
-        df = df.drop_duplicates(subset=['date', 'time_code', 'area'] if 'area' in df.columns else ['date', 'time_code', 'area_code']).reset_index(drop=True)
+        # 重複削除
+        df = df.drop_duplicates(subset=['date', 'time_code', 'area']).reset_index(drop=True)
         
         def code_to_time(code):
             total_minutes = (int(code) - 1) * 30
@@ -49,15 +49,12 @@ def load_data():
         df['datetime'] = pd.to_datetime(df['date'].dt.strftime('%Y-%m-%d') + ' ' + df['時刻'])
         if 'area' in df.columns:
             df = df.rename(columns={'area': 'エリア'})
-        elif 'area_code' in df.columns: # areaカラムがない場合の補完
-            area_map = {1:'北海道', 2:'東北', 3:'東京', 4:'中部', 5:'北陸', 6:'関西', 7:'中国', 8:'四国', 9:'九州'}
-            df['エリア'] = df['area_code'].map(area_map)
             
         return df, f"全{len(file_list)}ファイルを統合完了"
     except Exception as e:
         return None, f"データ統合エラー: {e}"
 
-# --- CSS: 統一デザイン定義 ---
+# --- CSS定義 ---
 st.markdown("""
     <style>
     .main-title { font-size: 24px !important; font-weight: bold; color: #1E1E1E; }
@@ -72,7 +69,7 @@ try:
     now_jst = datetime.now(JST)
     today_jst = now_jst.date()
     
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.11)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.12)</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="today-date-banner">現在時刻 (JST): {now_jst.strftime("%Y/%m/%d %H:%M")}</div>', unsafe_allow_html=True)
 
     st.sidebar.header("📊 表示設定")
@@ -80,9 +77,7 @@ try:
         st.cache_data.clear()
         st.rerun()
 
-    # 基準日の範囲設定
     start_limit = datetime(2020, 4, 1).date()
-    # 4/2以降の選択もカレンダー上は許可（データがあれば表示）
     selected_date = st.sidebar.date_input("分析基準日を選択", value=today_jst, min_value=start_limit)
 
     if df is not None:
@@ -91,7 +86,8 @@ try:
 
         st.sidebar.markdown("---")
         st.sidebar.subheader("📅 任意期間の指定")
-        date_range = st.sidebar.date_input("分析対象期間", value=(selected_date - timedelta(days=7), selected_date), min_value=start_limit)
+        # デフォルトは基準日から1ヶ月前
+        date_range = st.sidebar.date_input("分析対象期間", value=(selected_date - timedelta(days=30), selected_date), min_value=start_limit)
 
         def update_chart_layout(fig):
             fig.update_layout(
@@ -105,7 +101,6 @@ try:
 
         # --- 1. 統計メトリック ---
         day_df = df[df['date'].dt.date == selected_date].copy()
-        
         if not day_df.empty:
             target_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
             display_area_name = "全国" if selected_area == "全エリア" else selected_area
@@ -122,7 +117,7 @@ try:
             fig_today = px.line(target_df, x='時刻', y='price', color='エリア' if selected_area == "全エリア" else None, markers=True)
             st.plotly_chart(update_chart_layout(fig_today), use_container_width=True, config=CHART_CONFIG)
         else:
-            st.warning(f"⚠️ {selected_date} のデータはCSV内に見つかりません。JEPXの公示をお待ちください。")
+            st.warning(f"⚠️ {selected_date} のデータはまだありません。")
 
         # --- 2. トレンド・多角分析 ---
         st.markdown('<div class="section-header">📅 期間トレンド・多角分析</div>', unsafe_allow_html=True)
@@ -134,12 +129,35 @@ try:
                 mask = (df['date'].dt.date >= s_d) & (df['date'].dt.date <= e_d)
                 if selected_area != "全エリア": mask &= (df['エリア'] == selected_area)
                 c_df = df[mask].copy()
+                
                 if not c_df.empty:
-                    st.markdown(f'<div class="sub-title">🔍 指定期間 ({s_d}～{e_d})</div>', unsafe_allow_html=True)
-                    is_short = (e_d - s_d).days <= 7
-                    fig_custom = px.line(c_df if is_short else c_df.groupby(['date', 'エリア'])['price'].mean().reset_index(), 
-                                         x='datetime' if is_short else 'date', y='price', color='エリア')
+                    st.markdown(f'<div class="sub-title">🔍 指定期間推移 ({s_d} ～ {e_d})</div>', unsafe_allow_html=True)
+                    
+                    # 描画用データ作成（10日以上なら日次平均、それ以下なら30分単位）
+                    is_short = (e_d - s_d).days <= 10
+                    plot_df = c_df if is_short else c_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
+                    x_col = 'datetime' if is_short else 'date'
+                    
+                    fig_custom = px.line(plot_df, x=x_col, y='price', color='エリア')
+                    
+                    # --- 平均値線の追加ロジック ---
+                    if selected_area == "全エリア":
+                        # 全エリアの場合は全体の平均を1本引く（またはエリアごとに引くと見づらいため、ここでは全体平均）
+                        overall_avg = c_df['price'].mean()
+                        fig_custom.add_hline(y=overall_avg, line_dash="dash", line_color="gray", 
+                                             annotation_text=f"全体平均: {overall_avg:.2f}円", 
+                                             annotation_position="top left")
+                    else:
+                        # 単一エリアの場合はそのエリアの平均を引く
+                        area_avg = c_df['price'].mean()
+                        # エリアの色を取得して線に反映
+                        fig_custom.add_hline(y=area_avg, line_dash="dash", line_color="red", 
+                                             annotation_text=f"{selected_area}期間平均: {area_avg:.2f}円", 
+                                             annotation_position="top right")
+
                     st.plotly_chart(update_chart_layout(fig_custom), use_container_width=True, config=CHART_CONFIG)
+                else:
+                    st.info("指定された期間のデータがありません。")
 
         # 過去データ参照（7日〜1年）
         periods = [7, 30, 90, 180, 365]
@@ -151,9 +169,11 @@ try:
                 if selected_area != "全エリア": t_mask &= (df['エリア'] == selected_area)
                 t_df = df[t_mask].copy()
                 if not t_df.empty:
-                    st.markdown(f'<div class="sub-title">📅 直近{labels[i]}の日別平均</div>', unsafe_allow_html=True)
                     d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                     fig = px.line(d_avg, x='date', y='price', color='エリア')
+                    # ここにも簡易的な平均線を追加
+                    period_avg = t_df['price'].mean()
+                    fig.add_hline(y=period_avg, line_dash="dot", line_color="orange", opacity=0.5)
                     st.plotly_chart(update_chart_layout(fig), use_container_width=True, config=CHART_CONFIG)
 
         with tabs[6]: # 季節比較
@@ -168,6 +188,12 @@ try:
                     go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
                 ])
                 st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
+        
+        with tabs[7]: # 時間帯分析
+            if not day_df.empty:
+                st.markdown(f'<div class="sub-title">🕒 {selected_date} のエリア別・時間帯価格分布</div>', unsafe_allow_html=True)
+                fig_heat = px.density_heatmap(day_df, x="時刻", y="エリア", z="price", histfunc="avg", color_continuous_scale="Viridis")
+                st.plotly_chart(update_chart_layout(fig_heat), use_container_width=True, config=CHART_CONFIG)
 
     else:
         st.error(status_msg)
