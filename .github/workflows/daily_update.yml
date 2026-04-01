@@ -23,12 +23,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # kaleidoの動作に必要なシステムライブラリ
+          # グラフ画像生成(kaleido)に必要なシステムライブラリ
           sudo apt-get update
           sudo apt-get install -y libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
 
       - name: Fetch Latest Data
-        # データ取得に失敗した場合、5分間隔で最大3回リトライする設定
+        # データがまだ公示されていない場合に備え、5分間隔で最大3回リトライ
         uses: nick-invision/retry@v3
         with:
           timeout_minutes: 5
@@ -41,13 +41,10 @@ jobs:
           MAIL_ADDRESS: ${{ secrets.MAIL_ADDRESS }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        # メール送信ステップ (jepx_report_v19_3.pyを実行)
-        # 失敗した場合はリトライせず、エラーとして停止させる
-        continue-on-error: false
-        run: python jepx_report_v19_3.py
+        # ファイル名を send_daily_report.py に指定
+        run: python send_daily_report.py
 
       - name: Commit and Push
-        # メール送信まで成功した場合のみ、取得したデータをリポジトリに保存
         if: success()
         run: |
           git config --local user.email "action@github.com"
