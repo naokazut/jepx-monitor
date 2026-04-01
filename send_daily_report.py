@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.17.0) ---
+# --- Project Zenith: Production Mail System (Ver.18.0) ---
 
 def code_to_time(code):
     """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
@@ -20,7 +20,8 @@ def send_daily_reports():
     target_date = (datetime.now(JST) + timedelta(days=1)).date()
     
     areas = ["東京", "東北", "関西", "中国", "九州"]
-    target_email = "tsukada@inbox.co.jp"
+    # 送信先リストにGmailを追加
+    target_emails = ["tsukada@inbox.co.jp", "naokazut@gmail.com"]
     
     try:
         df = pd.read_csv("data/spot_2026.csv")
@@ -52,7 +53,7 @@ def send_daily_reports():
         fig.add_trace(go.Scatter(x=area_df['time_str'], y=area_df['price'], mode='lines', line=dict(color='#1f77b4', width=2)))
         fig.add_hline(y=avg_price, line_dash="dash", line_color="orange", annotation_text=f"AVG: {avg_price:.2f}", annotation_position="bottom right")
 
-        # 08:00〜18:00のピーク判定
+        # 08:00(17)〜18:00(36)のピーク判定
         peak_df = area_df[(area_df['time_code'] >= 17) & (area_df['time_code'] <= 36) & (area_df['price'] > avg_price)]
         for _, row in peak_df.iterrows():
             t_str = row['time_str']
@@ -72,13 +73,13 @@ def send_daily_reports():
         img_path = f"temp_{area_name}.png"
         fig.write_image(img_path, engine="kaleido", width=1200, height=600)
 
-        # --- メール作成 (埋め込み表示への完全対応) ---
+        # --- メール作成 ---
         msg = MIMEMultipart('related')
         msg['Subject'] = f"【{target_date} {area_name}エリアJEPX予報レポート】"
         msg['From'] = mail_user
-        msg['To'] = target_email
+        msg['To'] = ", ".join(target_emails) # 複数宛先に送信
 
-        # メッセージ本文の更新
+        # 本文の文言修正
         html = f"""
         <html>
           <body style="font-family: sans-serif; color: #333; max-width: 800px;">
@@ -87,31 +88,30 @@ def send_daily_reports():
               最高価格：{max_row['price']:.2f}円@{code_to_time(max_row['time_code'])}<br>
               最低価格：{min_row['price']:.2f}円@{code_to_time(min_row['time_code'])}<br>
               平均単価：{avg_price:.2f}円<br>
-              <b style="color: red;">※グラフ上の赤丸の時間帯は、平日の午前8時から午後6時までの時間帯で、その日の平均単価より価格が高い時間帯を示しています。そのため電気使用量を抑えられる場合は、極力抑えてコスト抑制にご尽力ください！</b>
+              <b style="color: red;">
+                ※グラフ上の赤丸は、平日の午前8時から午後6時までの間で、その日の平均単価より価格が高い時間帯を示しています。<br>
+                そのため該当時間帯に電気使用量を抑えられる場合は、極力抑えコスト抑制にご尽力ください！
+              </b>
             </p>
             <div style="margin-top: 20px;">
-              <img src="cid:chart_{area_name}" style="width: 100%; height: auto; display: block;">
+              <img src="cid:chart_{area_name}" style="width: 100%; height: auto; display: block; border: 1px solid #ddd;">
             </div>
             <p style="color: #666; font-size: 0.8em; margin-top: 15px;">
-              ※グラフ内 赤丸：08-18時の平均超過時間 / 緑丸：最安値 / 橙線：平均価格
+              ※グラフ内 赤丸：対象時間の価格高騰 / 緑丸：最安値 / 橙線：平均価格
             </p>
           </body>
         </html>
         """
-        
-        msg_alternative = MIMEMultipart('alternative')
-        msg.attach(msg_alternative)
-        msg_alternative.attach(MIMEText(html, 'html'))
+        msg.attach(MIMEText(html, 'html'))
 
-        # 画像データの添付処理
+        # 画像の埋め込み処理
         with open(img_path, 'rb') as f:
-            img_data = f.read()
-            img = MIMEImage(img_data, name=os.path.basename(img_path))
+            img = MIMEImage(f.read())
             img.add_header('Content-ID', f'<chart_{area_name}>')
-            img.add_header('Content-Disposition', 'inline') # 添付ファイル化を避ける
+            img.add_header('Content-Disposition', 'inline', filename=img_path)
             msg.attach(img)
 
-        # 送信
+        # 送信実行
         try:
             with smtplib.SMTP(smtp_server, 587) as server:
                 server.starttls()
