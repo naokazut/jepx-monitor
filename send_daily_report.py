@@ -8,7 +8,7 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.19.3) ---
+# --- Project Zenith: Production Mail System (Ver.19.4) ---
 
 def code_to_time(code):
     """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
@@ -26,15 +26,21 @@ AREA_ID_MAP = {
 
 def send_daily_reports():
     JST = pytz.timezone('Asia/Tokyo')
-    target_date = (datetime.now(JST) + timedelta(days=1)).date()
-#   target_date = datetime.now(JST).date()
+    now = datetime.now(JST)
+    target_date = (now + timedelta(days=1)).date()
+#   target_date = now.date()  # 手動テスト用：当日データを使う場合はこちらを有効化
     date_str = target_date.strftime("%Y-%m-%d")
+
+    # ★修正: 会計年度を動的に計算（4月起点）
+    fy = now.year if now.month >= 4 else now.year - 1
 
     areas = ["東京", "東北", "関西", "中国", "九州"]
     target_emails = ["tsukada@inbox.co.jp", "naokazut@gmail.com"]
 
     try:
-        df = pd.read_csv("data/spot_2026.csv")
+        # ★修正: ハードコードを廃止し動的パスに変更
+        csv_path = f"data/spot_{fy}.csv"
+        df = pd.read_csv(csv_path)
         df['date'] = pd.to_datetime(df['date']).dt.date
         target_df = df[df['date'] == target_date].copy()
 
