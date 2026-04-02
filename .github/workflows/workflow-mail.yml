@@ -1,0 +1,41 @@
+name: JEPX Send Report
+
+on:
+  schedule:
+    - cron: '0 4 * * 1-5'   # JST 13:00 (UTC 4:00) 月〜金
+  workflow_dispatch:          # 手動実行用ボタン
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          # グラフ画像生成(kaleido)に必要なシステムライブラリ
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
+
+      - name: Send Daily Reports
+        # 13:00開始、5分間隔で最大5回リトライ（最遅 13:20 まで試行）
+        # CSVが本日未更新の場合は send_daily_report.py 側で sys.exit(1) しリトライが走る
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 5
+          retry_wait_seconds: 300
+          command: >-
+            env
+            MAIL_ADDRESS=${{ secrets.MAIL_ADDRESS }}
+            MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
+            SMTP_SERVER=${{ secrets.SMTP_SERVER }}
+            python send_daily_report.py
