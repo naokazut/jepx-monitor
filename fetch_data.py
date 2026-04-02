@@ -11,10 +11,16 @@ import pytz
 def fetch_jepx_data():
     JST = pytz.timezone('Asia/Tokyo')
     now = datetime.now(JST)
+
+    # 会計年度を動的に計算（4月起点）
     fy = now.year if now.month >= 4 else now.year - 1
 
     os.makedirs('data', exist_ok=True)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/91.0.4472.124 Safari/537.36"
+    }
 
     url = f"https://www.jepx.jp/market/excel/spot_{fy}.csv"
     save_path = f"data/spot_{fy}.csv"
@@ -34,7 +40,10 @@ def fetch_jepx_data():
 
         date_col = '年月日'
         time_col = '時刻コード'
-        area_keywords = ['システム値', '東京', '関西', '九州', '北海道', '東北', '中部', '北陸', '中国', '四国']
+        area_keywords = [
+            'システム値', '東京', '関西', '九州',
+            '北海道', '東北', '中部', '北陸', '中国', '四国'
+        ]
 
         found_columns = {}
         for kw in area_keywords:
