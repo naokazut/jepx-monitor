@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import plotly.graph_objects as go
 import smtplib
@@ -8,7 +9,7 @@ from email.mime.image import MIMEImage
 from datetime import datetime, timedelta
 import pytz
 
-# --- Project Zenith: Production Mail System (Ver.19.4) ---
+# --- Project Zenith: Production Mail System (Ver.19.5) ---
 
 def code_to_time(code):
     """30分刻みのタイムコード(1-48)を hh:mm 形式に変換"""
@@ -31,25 +32,34 @@ def send_daily_reports():
 #   target_date = now.date()  # 手動テスト用：当日データを使う場合はこちらを有効化
     date_str = target_date.strftime("%Y-%m-%d")
 
-    # ★修正: 会計年度を動的に計算（4月起点）
+    # 会計年度を動的に計算（4月起点）
     fy = now.year if now.month >= 4 else now.year - 1
+    csv_path = f"data/spot_{fy}.csv"
+
+    # ★ CSV本日更新チェック（未更新の場合はリトライさせるため sys.exit(1)）
+    try:
+        csv_mtime = datetime.fromtimestamp(os.path.getmtime(csv_path), tz=JST).date()
+        if csv_mtime != now.date():
+            print(f"CSVが本日未更新です（最終更新: {csv_mtime}）。送信を中止しリトライします。")
+            sys.exit(1)
+    except FileNotFoundError:
+        print(f"CSVファイルが存在しません: {csv_path}")
+        sys.exit(1)
 
     areas = ["東京", "東北", "関西", "中国", "九州"]
     target_emails = ["tsukada@inbox.co.jp", "naokazut@gmail.com"]
 
     try:
-        # ★修正: ハードコードを廃止し動的パスに変更
-        csv_path = f"data/spot_{fy}.csv"
         df = pd.read_csv(csv_path)
         df['date'] = pd.to_datetime(df['date']).dt.date
         target_df = df[df['date'] == target_date].copy()
 
         if target_df.empty:
             print(f"{date_str}のデータがありません。")
-            return
+            sys.exit(1)
     except Exception as e:
         print(f"データ読み込みエラー: {e}")
-        return
+        sys.exit(1)
 
     mail_user = os.environ.get('MAIL_ADDRESS')
     mail_pass = os.environ.get('MAIL_PASSWORD')
@@ -187,6 +197,7 @@ def send_daily_reports():
             print(f"成功: {area_name}")
         except Exception as e:
             print(f"失敗: {area_name} - {e}")
+            sys.exit(1)
 
         if os.path.exists(img_path):
             os.remove(img_path)
