@@ -7,13 +7,13 @@ import glob
 import os
 import pytz
 
-# --- Project Zenith: JEPX統合分析 (Version 12) ---
-# 【新機能】指定期間グラフにエリア別の平均値線（水平破線）とアノテーションを追加。
+# --- Project Zenith: JEPX統合分析 (Version 13) ---
+# 【修正】デフォルト表示日をCSV最新データ日付に自動設定。タイトルをVer.13に更新。
 
 JST = pytz.timezone('Asia/Tokyo')
 
 # 1. ページ設定
-st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.12", layout="wide")
+st.set_page_config(page_title="Project Zenith - JEPX分析 Ver.13", layout="wide")
 
 # 2. データの読み込み関数
 @st.cache_data(ttl=3600)
@@ -68,8 +68,14 @@ try:
     df, status_msg = load_data()
     now_jst = datetime.now(JST)
     today_jst = now_jst.date()
-    
-    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.12)</div>', unsafe_allow_html=True)
+
+    # ★修正: CSVの最新日付を取得し、デフォルト表示日として使用
+    if df is not None:
+        latest_date = df['date'].dt.date.max()
+    else:
+        latest_date = today_jst
+
+    st.markdown('<div class="main-title">⚡️ Project Zenith: JEPX統合分析 (Ver.13)</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="today-date-banner">現在時刻 (JST): {now_jst.strftime("%Y/%m/%d %H:%M")}</div>', unsafe_allow_html=True)
 
     st.sidebar.header("📊 表示設定")
@@ -78,7 +84,9 @@ try:
         st.rerun()
 
     start_limit = datetime(2020, 4, 1).date()
-    selected_date = st.sidebar.date_input("分析基準日を選択", value=today_jst, min_value=start_limit)
+
+    # ★修正: value を today_jst → latest_date に変更
+    selected_date = st.sidebar.date_input("分析基準日を選択", value=latest_date, min_value=start_limit)
 
     if df is not None:
         all_areas = sorted(df['エリア'].unique().tolist())
@@ -140,17 +148,14 @@ try:
                     
                     fig_custom = px.line(plot_df, x=x_col, y='price', color='エリア')
                     
-                    # --- 平均値線の追加ロジック ---
+                    # 平均値線の追加ロジック
                     if selected_area == "全エリア":
-                        # 全エリアの場合は全体の平均を1本引く（またはエリアごとに引くと見づらいため、ここでは全体平均）
                         overall_avg = c_df['price'].mean()
                         fig_custom.add_hline(y=overall_avg, line_dash="dash", line_color="gray", 
                                              annotation_text=f"全体平均: {overall_avg:.2f}円", 
                                              annotation_position="top left")
                     else:
-                        # 単一エリアの場合はそのエリアの平均を引く
                         area_avg = c_df['price'].mean()
-                        # エリアの色を取得して線に反映
                         fig_custom.add_hline(y=area_avg, line_dash="dash", line_color="red", 
                                              annotation_text=f"{selected_area}期間平均: {area_avg:.2f}円", 
                                              annotation_position="top right")
@@ -171,7 +176,6 @@ try:
                 if not t_df.empty:
                     d_avg = t_df.groupby(['date', 'エリア'])['price'].mean().reset_index()
                     fig = px.line(d_avg, x='date', y='price', color='エリア')
-                    # ここにも簡易的な平均線を追加
                     period_avg = t_df['price'].mean()
                     fig.add_hline(y=period_avg, line_dash="dot", line_color="orange", opacity=0.5)
                     st.plotly_chart(update_chart_layout(fig), use_container_width=True, config=CHART_CONFIG)
