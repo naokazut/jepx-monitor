@@ -3,7 +3,7 @@ name: JEPX Send Report
 on:
   schedule:
     - cron: '0 4 * * 1-5'   # JST 13:00 (UTC 4:00) 月〜金
-  workflow_dispatch:          # 手動実行用ボタン
+  workflow_dispatch:
 
 jobs:
   send-report:
@@ -21,21 +21,18 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # グラフ画像生成(kaleido)に必要なシステムライブラリ
           sudo apt-get update
           sudo apt-get install -y libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
 
+      # ★修正: env を retry の外（ステップレベル）で定義し、command をシンプルに
       - name: Send Daily Reports
-        # 13:00開始、5分間隔で最大5回リトライ（最遅 13:20 まで試行）
-        # CSVが本日未更新の場合は send_daily_report.py 側で sys.exit(1) しリトライが走る
         uses: nick-invision/retry@v3
+        env:
+          MAIL_ADDRESS: ${{ secrets.MAIL_ADDRESS }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
         with:
           timeout_minutes: 5
           max_attempts: 5
           retry_wait_seconds: 300
-          command: >-
-            env
-            MAIL_ADDRESS=${{ secrets.MAIL_ADDRESS }}
-            MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
-            SMTP_SERVER=${{ secrets.SMTP_SERVER }}
-            python send_daily_report.py
+          command: python send_daily_report.py  
