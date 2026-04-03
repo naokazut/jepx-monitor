@@ -1,8 +1,6 @@
 name: JEPX Fetch Data
 
 on:
-  schedule:
-    - cron: '30 3 * * 1-5'   # JST 12:30 (UTC 3:30) 月〜金
   workflow_dispatch:           # 手動実行用ボタン
 
 jobs:
