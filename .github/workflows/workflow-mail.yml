@@ -1,8 +1,6 @@
 name: JEPX Send Report
 
 on:
-  schedule:
-    - cron: '0 4 * * 1-5'   # JST 13:00 (UTC 4:00) 月〜金
   workflow_dispatch:
 
 jobs:
@@ -22,9 +20,8 @@ jobs:
         run: |
           pip install -r requirements.txt
           sudo apt-get update
-          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0
 
-      # ★修正: env を retry の外（ステップレベル）で定義し、command をシンプルに
       - name: Send Daily Reports
         uses: nick-invision/retry@v3
         env:
@@ -35,4 +32,4 @@ jobs:
           timeout_minutes: 5
           max_attempts: 5
           retry_wait_seconds: 300
-          command: python send_daily_report.py  
+          command: python send_daily_report.py
