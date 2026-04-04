@@ -1,7 +1,7 @@
 name: JEPX Fetch Data
 
 on:
-  workflow_dispatch:           # 手動実行用ボタン
+  workflow_dispatch:
 
 jobs:
   fetch-data:
@@ -20,7 +20,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fetch Latest Data
-        # 12:30開始、10分間隔で最大6回リトライ（最遅 13:20 まで試行）
         uses: nick-invision/retry@v3
         with:
           timeout_minutes: 10
@@ -32,7 +31,19 @@ jobs:
         if: success()
         run: |
           git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.name "GitHub Actions"
           git add data/*.csv
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update JEPX data [skip ci]"
+          git diff --staged --quiet || git commit -m "Update JEPX data $(date +'%Y-%m-%d')"
           git push
+
+  trigger-report:
+    needs: fetch-data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Send Report
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/naokazut/jepx-monitor/actions/workflows/workflow-mail.yml/dispatches \
+            -d '{"ref":"main"}'
