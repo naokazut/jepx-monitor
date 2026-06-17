@@ -182,8 +182,9 @@ try:
 
         with tabs[6]: # 季節比較
             df['month'] = df['date'].dt.month
-            summer = df[df['month'].isin([7, 8, 9])]
-            winter = df[df['month'].isin([12, 1, 2])]
+            season_df = df if selected_area == "全エリア" else df[df['エリア'] == selected_area]
+            summer = season_df[season_df['month'].isin([7, 8, 9])]
+            winter = season_df[season_df['month'].isin([12, 1, 2])]
             if not summer.empty and not winter.empty:
                 s_avg = summer.groupby('エリア')['price'].mean().reset_index()
                 w_avg = winter.groupby('エリア')['price'].mean().reset_index()
@@ -194,9 +195,10 @@ try:
                 st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
         
         with tabs[7]: # 時間帯分析
-            if not day_df.empty:
-                st.markdown(f'<div class="sub-title">🕒 {selected_date} のエリア別・時間帯価格分布</div>', unsafe_allow_html=True)
-                fig_heat = px.density_heatmap(day_df, x="時刻", y="エリア", z="price", histfunc="avg", color_continuous_scale="Viridis")
+            heat_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
+            if not heat_df.empty:
+                st.markdown(f'<div class="sub-title">🕒 {selected_date} の時間帯価格分布（{"全国" if selected_area == "全エリア" else selected_area}）</div>', unsafe_allow_html=True)
+                fig_heat = px.density_heatmap(heat_df, x="時刻", y="エリア", z="price", histfunc="avg", color_continuous_scale="Viridis")
                 st.plotly_chart(update_chart_layout(fig_heat), use_container_width=True, config=CHART_CONFIG)
 
     else:
