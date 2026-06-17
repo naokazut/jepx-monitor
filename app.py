@@ -199,7 +199,7 @@ try:
             if not heat_df.empty:
                 area_label = "全国" if selected_area == "全エリア" else selected_area
                 st.markdown(f'<div class="sub-title">🕒 {selected_date} の昼夜価格対比（{area_label}）</div>', unsafe_allow_html=True)
-                st.caption("昼間: 8:00〜22:00 ／ 夜間: 22:00〜翌8:00（九州電力の昼夜区分・案A準拠）")
+                st.caption("昼間: 8:00〜22:00 ／ 夜間: 22:00〜翌8:00")
 
                 # time_code: 1始まり30分刻み。昼間=8:00(code17)〜22:00直前(code44)、夜間=それ以外
                 tmp = heat_df.copy()
