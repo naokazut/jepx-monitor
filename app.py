@@ -180,19 +180,46 @@ try:
                     fig.add_hline(y=period_avg, line_dash="dot", line_color="orange", opacity=0.5)
                     st.plotly_chart(update_chart_layout(fig), use_container_width=True, config=CHART_CONFIG)
 
-        with tabs[6]: # 季節比較
+        with tabs[6]: # 季節比較（年度ベース＋夏冬期間可変）
             df['month'] = df['date'].dt.month
-            season_df = df if selected_area == "全エリア" else df[df['エリア'] == selected_area]
-            summer = season_df[season_df['month'].isin([7, 8, 9])]
-            winter = season_df[season_df['month'].isin([12, 1, 2])]
-            if not summer.empty and not winter.empty:
-                s_avg = summer.groupby('エリア')['price'].mean().reset_index()
-                w_avg = winter.groupby('エリア')['price'].mean().reset_index()
-                fig_s = go.Figure(data=[
-                    go.Bar(name='夏(7-9月)', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B'),
-                    go.Bar(name='冬(12-2月)', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9')
-                ])
-                st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
+            # 年度: 4月〜翌3月。1〜3月は前年の年度に属する
+            df['fiscal_year'] = df['date'].dt.year.where(df['month'] >= 4, df['date'].dt.year - 1)
+
+            fy_options = sorted(df['fiscal_year'].unique().tolist(), reverse=True)
+            if fy_options:
+                col_y, col_s, col_w = st.columns([1, 2, 2])
+                with col_y:
+                    target_fy = st.selectbox("対象年度", fy_options, index=0, key="season_fy",
+                                             format_func=lambda y: f"{y}年度")
+                with col_s:
+                    summer_months = st.multiselect("夏期間（月）", list(range(1, 13)), default=[7, 8, 9], key="season_summer")
+                with col_w:
+                    winter_months = st.multiselect("冬期間（月）", list(range(1, 13)), default=[12, 1, 2], key="season_winter")
+
+                season_df = df if selected_area == "全エリア" else df[df['エリア'] == selected_area]
+                season_df = season_df[season_df['fiscal_year'] == target_fy]
+                summer = season_df[season_df['month'].isin(summer_months)]
+                winter = season_df[season_df['month'].isin(winter_months)]
+
+                area_label = "全国" if selected_area == "全エリア" else selected_area
+                st.markdown(f'<div class="sub-title">☀️ {target_fy}年度 季節比較（{area_label}）</div>', unsafe_allow_html=True)
+                st.caption(f"年度: {target_fy}/4〜{target_fy+1}/3　｜　夏: {'/'.join(map(str, sorted(summer_months)))}月 ／ 冬: {'/'.join(map(str, sorted(winter_months)))}月")
+
+                if not summer.empty or not winter.empty:
+                    s_avg = summer.groupby('エリア')['price'].mean().reset_index() if not summer.empty else pd.DataFrame(columns=['エリア', 'price'])
+                    w_avg = winter.groupby('エリア')['price'].mean().reset_index() if not winter.empty else pd.DataFrame(columns=['エリア', 'price'])
+                    fig_s = go.Figure(data=[
+                        go.Bar(name='夏', x=s_avg['エリア'], y=s_avg['price'], marker_color='#FF4B4B',
+                               text=[f"{v:.2f}円" for v in s_avg['price']], textposition='outside'),
+                        go.Bar(name='冬', x=w_avg['エリア'], y=w_avg['price'], marker_color='#0068C9',
+                               text=[f"{v:.2f}円" for v in w_avg['price']], textposition='outside')
+                    ])
+                    fig_s.update_layout(yaxis_title="平均価格(円)")
+                    st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
+                else:
+                    st.warning(f"⚠️ {target_fy}年度の指定月にデータがありません。")
+            else:
+                st.info("データがారありません。")
         
         with tabs[7]: # 時間帯分析（昼夜対比・任意期間連動）
             if isinstance(date_range, tuple) and len(date_range) == 2:
