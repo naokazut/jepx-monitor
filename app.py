@@ -194,17 +194,24 @@ try:
                 ])
                 st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
         
-        with tabs[7]: # 時間帯分析（昼夜対比）
-            heat_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
-            if not heat_df.empty:
+        with tabs[7]: # 時間帯分析（昼夜対比・任意期間連動）
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                s_d, e_d = date_range
+                seg_mask = (df['date'].dt.date >= s_d) & (df['date'].dt.date <= e_d)
+                if selected_area != "全エリア":
+                    seg_mask &= (df['エリア'] == selected_area)
+                seg_src = df[seg_mask].copy()
+            else:
+                seg_src = pd.DataFrame()
+
+            if not seg_src.empty:
                 area_label = "全国" if selected_area == "全エリア" else selected_area
-                st.markdown(f'<div class="sub-title">🕒 {selected_date} の昼夜価格対比（{area_label}）</div>', unsafe_allow_html=True)
-                st.caption("昼間: 8:00〜22:00 ／ 夜間: 22:00〜翌8:00")
+                st.markdown(f'<div class="sub-title">🕒 昼夜価格対比（{area_label}）</div>', unsafe_allow_html=True)
+                st.caption(f"期間: {s_d} 〜 {e_d}　｜　昼間: 8:00〜22:00 ／ 夜間: 22:00〜翌8:00（九州電力の昼夜区分・案A準拠）")
 
                 # time_code: 1始まり30分刻み。昼間=8:00(code17)〜22:00直前(code44)、夜間=それ以外
-                tmp = heat_df.copy()
-                tmp['区分'] = tmp['time_code'].apply(lambda c: '昼間' if 17 <= int(c) <= 44 else '夜間')
-                seg_avg = tmp.groupby('区分')['price'].mean().reindex(['昼間', '夜間']).reset_index()
+                seg_src['区分'] = seg_src['time_code'].apply(lambda c: '昼間' if 17 <= int(c) <= 44 else '夜間')
+                seg_avg = seg_src.groupby('区分')['price'].mean().reindex(['昼間', '夜間']).reset_index()
 
                 fig_seg = go.Figure(data=[
                     go.Bar(
@@ -217,7 +224,7 @@ try:
                 fig_seg.update_layout(yaxis_title="平均価格(円)", showlegend=False)
                 st.plotly_chart(update_chart_layout(fig_seg), use_container_width=True, config=CHART_CONFIG)
             else:
-                st.warning(f"⚠️ {selected_date} のデータがありません。")
+                st.warning("⚠️ 指定された期間のデータがありません。")
 
     else:
         st.error(status_msg)
