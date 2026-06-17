@@ -194,12 +194,30 @@ try:
                 ])
                 st.plotly_chart(update_chart_layout(fig_s), use_container_width=True, config=CHART_CONFIG)
         
-        with tabs[7]: # 時間帯分析
+        with tabs[7]: # 時間帯分析（昼夜対比）
             heat_df = day_df if selected_area == "全エリア" else day_df[day_df['エリア'] == selected_area]
             if not heat_df.empty:
-                st.markdown(f'<div class="sub-title">🕒 {selected_date} の時間帯価格分布（{"全国" if selected_area == "全エリア" else selected_area}）</div>', unsafe_allow_html=True)
-                fig_heat = px.density_heatmap(heat_df, x="時刻", y="エリア", z="price", histfunc="avg", color_continuous_scale="Viridis")
-                st.plotly_chart(update_chart_layout(fig_heat), use_container_width=True, config=CHART_CONFIG)
+                area_label = "全国" if selected_area == "全エリア" else selected_area
+                st.markdown(f'<div class="sub-title">🕒 {selected_date} の昼夜価格対比（{area_label}）</div>', unsafe_allow_html=True)
+                st.caption("昼間: 8:00〜22:00 ／ 夜間: 22:00〜翌8:00（九州電力の昼夜区分・案A準拠）")
+
+                # time_code: 1始まり30分刻み。昼間=8:00(code17)〜22:00直前(code44)、夜間=それ以外
+                tmp = heat_df.copy()
+                tmp['区分'] = tmp['time_code'].apply(lambda c: '昼間' if 17 <= int(c) <= 44 else '夜間')
+                seg_avg = tmp.groupby('区分')['price'].mean().reindex(['昼間', '夜間']).reset_index()
+
+                fig_seg = go.Figure(data=[
+                    go.Bar(
+                        x=seg_avg['区分'], y=seg_avg['price'],
+                        marker_color=['#FF8C00', '#0068C9'],
+                        text=[f"{v:.2f}円" for v in seg_avg['price']],
+                        textposition='outside'
+                    )
+                ])
+                fig_seg.update_layout(yaxis_title="平均価格(円)", showlegend=False)
+                st.plotly_chart(update_chart_layout(fig_seg), use_container_width=True, config=CHART_CONFIG)
+            else:
+                st.warning(f"⚠️ {selected_date} のデータがありません。")
 
     else:
         st.error(status_msg)
