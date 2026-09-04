@@ -16,7 +16,7 @@ def code_to_time(code):
     m = (int(code) - 1) * 30
     return f"{m // 60:02d}:{m % 60:02d}"
 
-# Content-IDをASCIIのみにするためのエリア名マッピング
+# Content-IDをASCIIのみにするくためのエリア名マッピング
 AREA_ID_MAP = {
     "東京": "tokyo",
     "東北": "tohoku",
@@ -130,7 +130,7 @@ def send_daily_reports():
         )
 
         img_path = f"temp_{area_id}.png"
-        fig.write_image(img_path, engine="kaleido", width=1200, height=600)
+        fig.write_image(img_path, width=1200, height=600)
 
         # --- メール作成（Outlook完全対応・multipart/related トップ構造）---
         msg = MIMEMultipart('related')
